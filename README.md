@@ -35,7 +35,7 @@ Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
 
 ### 🚀 Installation
 
-1. Télécharge la dernière release : [vinted-to-leboncoin-v3.zip](https://github.com/ton-pseudo/vinted-to-leboncoin/releases)
+1. Télécharge la dernière release : [vinted-to-leboncoin.zip](https://github.com/ValentinGratz/vinted2leboncoin-/blob/main/dist/vinted-to-leboncoin.zip)
 
 2. Dézippe le fichier
 
@@ -101,7 +101,7 @@ Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
 PR welcome ! L'idée c'est de rester simple et gratuit.
 
 ```bash
-git clone https://github.com/ton-pseudo/vinted-to-leboncoin.git
+git clone https://github.com/ValentinGratz/vinted2leboncoin-.git
 # Charge le dossier dans chrome://extensions/
 ```
 
