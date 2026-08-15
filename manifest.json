@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Vinted -> Leboncoin - L'outil du siecle",
+  "version": "1.0.0",
+  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://www.vinted.fr/*",
+    "https://www.vinted.com/*",
+    "https://www.leboncoin.fr/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.vinted.fr/*",
+        "https://www.vinted.com/*"
+      ],
+      "js": [
+        "content-vinted.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.leboncoin.fr/*"
+      ],
+      "js": [
+        "content-leboncoin.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
