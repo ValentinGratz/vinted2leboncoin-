@@ -113,4 +113,6 @@ Extension non affiliée à Vinted ni Leboncoin. Utilise-la pour tes propres anno
 
 Made with ❤️ par un vendeur qui en avait marre de recopier.
 
+Et à l'aide aussi de Meta IA.
+
 Si ça t'a fait gagner du temps, mets une ⭐️ sur le repo !
