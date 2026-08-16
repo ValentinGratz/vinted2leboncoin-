@@ -12,10 +12,11 @@
 ### Pourquoi cette extension existe ?
 
 **Flowdino** et consorts te forcent à :
-- Créer une boutique Shopify / WooCommerce / PrestaShop
-- Payer un abonnement pour synchroniser
-- Recréer tout ton catalogue sur leur plateforme
-- Configurer `sales-config`, `channels`, etc.
+
+* Créer une boutique Shopify / WooCommerce / PrestaShop
+* Payer un abonnement pour synchroniser
+* Recréer tout ton catalogue sur leur plateforme
+* Configurer `sales-config`, `channels`, etc.
 
 **Ici tu fais :**
 Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
@@ -24,18 +25,18 @@ Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
 
 ### ✨ Fonctionnalités
 
-- [x] Bouton **"⚡️ Importer sur Leboncoin"** directement sur tes pages Vinted
-- [x] Extraction auto : titre, description, prix, marque, taille, état, couleur, URL
-- [x] Récupération des 8 photos HD
-- [x] Pré-remplissage auto du formulaire Leboncoin (titre / description / prix)
-- [x] **V3** : Miniatures draggables avec vrai fichier JPEG pour contourner l'anti-bot Leboncoin
-- [x] Fallback : téléchargement auto dans `Téléchargements/vinted-import/`
-- [x] Popup avec historique de tes 50 dernières annonces importées
-- [x] 100% local, aucune donnée envoyée
+* [x] Bouton **"⚡️ Importer sur Leboncoin"** directement sur tes pages Vinted
+* [x] Extraction auto : titre, description, prix, marque, taille, état, couleur, URL
+* [x] Récupération des 8 photos HD
+* [x] Pré-remplissage auto du formulaire Leboncoin (titre / description / prix)
+* [x] **V3** : Miniatures draggables avec vrai fichier JPEG pour contourner l'anti-bot Leboncoin
+* [x] Fallback : téléchargement auto dans `Téléchargements/vinted-import/`
+* [x] Popup avec historique de tes 50 dernières annonces importées
+* [x] 100% local, aucune donnée envoyée
 
 ### 🚀 Installation
 
-1. Télécharge la dernière release : [vinted-to-leboncoin.zip](https://github.com/ValentinGratz/vinted2leboncoin-/blob/main/dist/vinted-to-leboncoin.zip)
+1. Télécharge la dernière release : https://github.com/ValentinGratz/vinted2leboncoin-/blob/main/dist/vinted-to-leboncoin.zip
 
 2. Dézippe le fichier
 
@@ -53,33 +54,36 @@ Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
 2. Clique sur le bouton orange sous le titre
 3. L'extension ouvre `leboncoin.fr/deposer-une-annonce`
 4. Dans le panneau à droite :
-   - Clique **"1. Remplir texte + prix"**
-   - Clique **"2. Drag & Drop auto des photos"** OU glisse toi-même les miniatures orange sur la zone photo Leboncoin
+
+   * Clique **"1. Remplir texte + prix"**
+   * Clique **"2. Drag & Drop auto des photos"** OU glisse toi-même les miniatures orange sur la zone photo Leboncoin
 5. Choisis juste la catégorie et publie !
 
 > **Note sur les photos :** Leboncoin bloque volontairement `input.files = ...` pour empêcher les bots. Aucune extension ne peut uploader 100% auto. La V3 contourne en simulant un vrai drag & drop humain. Si ça bloque, le drag manuel des miniatures fonctionne toujours à 100%.
 
+Tuto Youtube : https://youtu.be/2PWVkEis00A
+
 ### 🆚 vs Flowdino
 
-| | Flowdino | Cette extension |
-|---|---|---|
-| Besoin boutique Shopify ? | Oui | Non |
-| Prix | ~19€/mois | Gratuit |
-| Copie depuis Vinted existant ? | Non, recréation | Oui, 1 clic |
-| Photos auto ? | Partiel | Drag & Drop V3 |
-| Données sur serveur tiers ? | Oui | Non, 100% local |
+|                                | Flowdino        | Cette extension |
+| ------------------------------ | --------------- | --------------- |
+| Besoin boutique Shopify ?      | Oui             | Non             |
+| Prix                           | ~19€/mois       | Gratuit         |
+| Copie depuis Vinted existant ? | Non, recréation | Oui, 1 clic     |
+| Photos auto ?                  | Partiel         | Drag & Drop V3  |
+| Données sur serveur tiers ?    | Oui             | Non, 100% local |
 
 ### 🛠️ Stack technique
 
-- Manifest V3
-- Content Scripts (Vinted + Leboncoin)
-- `chrome.storage.local` pour l'historique
-- `DataTransfer` + `DragEvent` pour injection photos
-- Pas de backend, pas d'API
+* Manifest V3
+* Content Scripts (Vinted + Leboncoin)
+* `chrome.storage.local` pour l'historique
+* `DataTransfer` + `DragEvent` pour injection photos
+* Pas de backend, pas d'API
 
 ### 📂 Structure
 
-```
+```text
 .
 ├── manifest.json
 ├── content-vinted.js      # Extraction Vinted
@@ -91,10 +95,10 @@ Vinted → 1 clic → Leboncoin pré-rempli. C'est tout.
 
 ### 🔮 Roadmap
 
-- [ ] Mode rafale : importer tout ton profil Vinted d'un coup
-- [ ] Auto-détection catégorie Leboncoin via IA
-- [ ] Sync inverse : Leboncoin → Vinted
-- [ ] Export CSV de tes annonces
+* [ ] Mode rafale : importer tout ton profil Vinted d'un coup
+* [ ] Auto-détection catégorie Leboncoin via IA
+* [ ] Sync inverse : Leboncoin → Vinted
+* [ ] Export CSV de tes annonces
 
 ### 🤝 Contribuer
 
