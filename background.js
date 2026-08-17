@@ -1,11 +1,9 @@
-// background.js - v3.4 FIX CORS + download
+// background.js - v3.5 FIX CORS
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
-    if (msg.action === 'downloadPhotos' || msg.action === 'importVinted') {
-      const photos = msg.photos || msg.payload?.photos || [];
-      const itemId = msg.itemId || msg.payload?.itemId || Date.now();
-      
-      // 1. Téléchargement fallback dans Téléchargements/vinted-import/
+    if (msg.action === 'downloadPhotos') {
+      const photos = msg.photos || [];
+      const itemId = msg.itemId || Date.now();
       for (let i = 0; i < photos.length; i++) {
         try {
           await chrome.downloads.download({
@@ -13,26 +11,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             filename: `vinted-import/${itemId}_${i+1}.jpg`,
             conflictAction: 'overwrite'
           });
-        } catch(e) { console.warn('download fail', e); }
+        } catch {}
       }
       sendResponse({ ok: true });
     }
 
     if (msg.action === 'fetchBlob') {
-      // Appelé par content-leboncoin pour contourner CORS
       try {
         const res = await fetch(msg.url);
+        if (!res.ok) throw new Error('fetch failed ' + res.status);
         const blob = await res.blob();
-        const arrayBuffer = await blob.arrayBuffer();
-        // Convert to base64 pour passer via messaging
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const buf = await blob.arrayBuffer();
+        // chunk base64 pour éviter stack overflow
+        let binary = '';
+        const bytes = new Uint8Array(buf);
+        for (let i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
         sendResponse({ ok: true, base64, type: blob.type || 'image/jpeg' });
       } catch(e) {
-        console.error('fetchBlob fail', e);
-        sendResponse({ ok: false, error: e.message });
+        sendResponse({ ok: false, error: String(e) });
       }
-      return true; // keep channel open
     }
   })();
-  return true; // important pour sendResponse async
+  return true;
 });
