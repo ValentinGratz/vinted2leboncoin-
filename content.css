@@ -1,1 +1,4 @@
-#vinted-to-lbc-btn:hover{transform:scale(1.03)}
+#v2l-btn{background:#ff6e14!important;color:white!important;border:none!important;padding:10px 14px!important;border-radius:10px!important;font-weight:800!important;cursor:pointer!important;margin:12px 0!important;z-index:999999!important}
+#v2l-panel{position:fixed;right:20px;top:100px;z-index:9999999;background:white;border:2px solid #ff6e14;border-radius:12px;padding:12px;width:260px;box-shadow:0 4px 20px rgba(0,0,0,.2);font-family:Inter,system-ui}
+#v2l-panel button{width:100%;padding:10px;border:none;border-radius:8px;cursor:pointer;font-weight:700;margin-bottom:8px}
+#v2l-thumbs img{width:60px;height:60px;object-fit:cover;border-radius:8px;margin:4px;cursor:grab}

@@ -1,33 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Vinted -> Leboncoin - L'outil du siecle",
-  "version": "1.0.2",
-  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic. Fix #6 CORS final.",
+  "name": "Vinted -> Leboncoin",
+  "version": "1.7.1",
+  "description": "Fix quota exceeded",
   "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "downloads"
+    "storage"
   ],
   "host_permissions": [
-    "https://www.vinted.fr/*",
-    "https://www.vinted.com/*",
-    "https://*.vinted.net/*",
-    "https://*.vinted.com/*",
-    "https://www.leboncoin.fr/*",
-    "https://*.leboncoin.fr/*"
+    "*://*.vinted.fr/*",
+    "*://*.vinted.com/*",
+    "*://*.leboncoin.fr/*"
   ],
-  "action": {
-    "default_popup": "popup.html"
-  },
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
       "matches": [
-        "https://www.vinted.fr/*",
-        "https://www.vinted.com/*"
+        "*://*.vinted.fr/*",
+        "*://*.vinted.com/*"
       ],
       "js": [
         "content-vinted.js"
@@ -39,7 +27,7 @@
     },
     {
       "matches": [
-        "https://www.leboncoin.fr/*"
+        "*://*.leboncoin.fr/*"
       ],
       "js": [
         "content-leboncoin.js"
@@ -48,6 +36,33 @@
         "content.css"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icon.png",
+        "icon128.png"
+      ],
+      "matches": [
+        "*://*.vinted.fr/*",
+        "*://*.leboncoin.fr/*"
+      ]
     }
   ]
 }

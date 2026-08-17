@@ -1,35 +1,12 @@
-// content-vinted.js - FIX kQuotaBytes quota exceeded
-// On ne stocke PLUS les images en base64, uniquement les URLs
-
-async function scrapeVintedData() {
-  const title = document.querySelector('h1')?.innerText?.trim() || "";
-  const priceEl = document.querySelector('[data-testid*="price"]') || document.querySelector('.c-box__price');
-  const price = priceEl?.innerText?.trim() || "";
-  const description = document.querySelector('[itemprop="description"]')?.innerText || document.querySelector('[data-testid="description"]')?.innerText || "";
-
-  // Récupère uniquement les URLs HD (pas les blobs)
-  const imageUrls = [...document.querySelectorAll('img')].map(i => i.src).filter(src => src.includes('vinted') && src.includes('f800')).slice(0, 8);
-  // fallback si pas de f800
-  const finalUrls = imageUrls.length ? imageUrls : [...document.querySelectorAll('[data-testid="photo"] img')].map(i=>i.src).slice(0,8);
-
-  const item = {
-    id: Date.now(),
-    title: title,
-    price: price,
-    description: description,
-    imageUrls: finalUrls, // <--- 2 Ko au lieu de 10 Mo
-    url: window.location.href,
-    date: Date.now()
-  };
-
-  const { history = [] } = await chrome.storage.local.get("history");
-  history.push(item);
-  // On garde 10 max, pas 50 -> plus de quota
-  const trimmed = history.slice(-10);
-
-  await chrome.storage.local.set({ history: trimmed });
-  console.log("[V2L] Scrapé sans quota:", item);
-  return item;
+console.log('[V2L] FIX loaded');
+function scrape(){
+  const title=document.querySelector('h1')?.innerText?.trim()||"";
+  const price=document.querySelector('[data-testid="item-price"]')?.innerText||document.querySelector('[itemprop="price"]')?.content||"";
+  const desc=document.querySelector('[data-testid="item-description"]')?.innerText||"";
+  let urls=[...document.querySelectorAll('img')].map(i=>i.src).filter(s=>s.includes('vinted') && (s.includes('f800')||s.includes('f640')||s.includes('f300'))).slice(0,8);
+  if(urls.length===0) urls=[...document.querySelectorAll('img')].map(i=>i.src).filter(s=>s.includes('images')).slice(0,8);
+  const item={title,price,description:desc,imageUrls:urls,url:location.href,date:Date.now()};
+  chrome.storage.local.get(['history'], res=>{ let h=res.history||[]; h.push(item); h=h.slice(-10); chrome.storage.local.set({history:h}); });
 }
-
-// Ton bouton existant appelle scrapeVintedData()
+function addBtn(){ if(document.getElementById('v2l-btn')) return; const h1=document.querySelector('h1'); if(!h1) return; const b=document.createElement('button'); b.id='v2l-btn'; b.textContent='⚡️ Importer sur Leboncoin (FIX)'; b.onclick=()=>{scrape(); window.open('https://www.leboncoin.fr/deposer-une-annonce','_blank')}; h1.parentElement?.appendChild(b); }
+setInterval(addBtn,2000);
