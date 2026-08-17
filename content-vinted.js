@@ -1,86 +1,61 @@
-// content-vinted.js - v3.8 FINAL STRICT - Fix #6 badges footer
+// content-vinted.js - v3.9 ULTRA SIMPLE - no API, no /f800/ transform
 (() => {
   if (window.__VINTED2LEBONCOIN_INJECTED__) return;
   window.__VINTED2LEBONCOIN_INJECTED__ = true;
-
-  function getVintedItemId() {
-    return window.location.pathname.match(/\/items\/(\d+)/)?.[1] || null;
-  }
-
-  async function getVintedPhotosViaAPI(itemId) {
-    try {
-      const res = await fetch(`https://www.vinted.fr/api/v2/items/${itemId}`, {
-        headers: { 'Accept': 'application/json' },
-        credentials: 'include'
-      });
-      if (!res.ok) return null;
-      const json = await res.json();
-      const photos = json.item?.photos || [];
-      if (!photos.length) return null;
-      return photos.map(p => (p.full_size_url || p.url || '').split('?')[0]).filter(Boolean);
-    } catch { return null; }
-  }
+  console.log('[v2l] v3.9 loaded');
 
   function getCleanPhotosFromDOM() {
-    // STRICT: uniquement les vraies photos produit Vinted
+    // 1. Vraies photos produit - sélecteurs Vinted 2024/2025
     const selectors = [
       '[data-testid="item-photo"] img',
+      '[data-testid="item-photos"] img',
       '[data-testid="carousel-item"] img',
-      '[data-testid="image-gallery"] img',
-      'div[data-testid="item-photos"] img',
-      'img[data-testid="item-photo"]'
+      '[data-testid="image-gallery"] img'
     ];
 
     let raw = [...document.querySelectorAll(selectors.join(','))]
-      .map(img => img.currentSrc || img.src || img.dataset.src || '')
+      .map(img => img.currentSrc || img.src || '')
       .filter(Boolean);
 
-    // Si 0, on tente og:image (toujours la vraie photo produit)
+    console.log('[v2l] raw from selectors', raw.length, raw);
+
+    // 2. Si 0, fallback mais STRICT sans footer
+    if (raw.length === 0) {
+      raw = [...document.querySelectorAll('main img, [data-testid="item-detail"] img, article img')]
+        .filter(img => {
+          const s = (img.currentSrc || img.src || '').toLowerCase();
+          if (!s.includes('vinted.net')) return false;
+          // Exclude footer badges: ils sont petits et en bas de page
+          const rect = img.getBoundingClientRect();
+          if (rect.width < 200 || rect.height < 200) return false;
+          if (img.closest('footer')) return false;
+          return true;
+        })
+        .map(img => img.currentSrc || img.src);
+      console.log('[v2l] raw fallback main', raw.length);
+    }
+
+    // 3. Dernier recours og:image (toujours bon)
     if (raw.length === 0) {
       const og = document.querySelector('meta[property="og:image"]')?.content;
-      if (og && og.includes('vinted')) raw = [og];
+      console.log('[v2l] og:image', og);
+      if (og) raw = [og];
     }
 
-    // Filtre ultra strict anti-footer
-    const blacklist = [
-      'avatar','logo','icon','app-store','google-play','badge','profile','dots',
-      'placeholder','notification','trust','footer','store','apple','google',
-      'payment','paypal','visa','mastercard'
-    ];
-
-    return raw
-      .map(u => u.split('?')[0])
+    // 4. Nettoyage final - PAS de replace /f800/ qui casse tout en 404
+    const blacklist = ['avatar','logo','icon','app-store','google-play','badge','profile','dots','trust','store','footer','apple','google','payment'];
+    const clean = raw
+      .map(u => u.split('?')[0]) // enlève juste les params ?...
       .filter(u => {
         const l = u.toLowerCase();
-        // Doit être une vraie image Vinted produit
-        if (!l.includes('vinted')) return false;
-        if (l.includes('data:')) return false;
-        // Blacklist badges footer
         if (blacklist.some(b => l.includes(b))) return false;
-        // Les badges font < 200px de haut, les produits > 300
-        return true;
+        return l.includes('vinted.net') || l.includes('vinted.fr');
       })
       .filter((u,i,s) => s.indexOf(u)===i)
-      .map(u => {
-        // Passe en haute résolution
-        if (u.includes('/s') && u.includes('/f')) return u;
-        return u.replace(/\/s\d+\//, '/f800/');
-      })
       .slice(0,20);
-  }
 
-  async function getCleanPhotos() {
-    const id = getVintedItemId();
-    if (id) {
-      const api = await getVintedPhotosViaAPI(id);
-      if (api?.length) {
-        console.log(`[v2l] ${api.length} via API`);
-        return api;
-      }
-    }
-    const dom = getCleanPhotosFromDOM();
-    console.log(`[v2l] ${dom.length} via DOM strict`, dom);
-    return dom;
+    console.log('[v2l] clean final', clean);
+    return clean;
   }
 
   function urlToBase64ViaCanvas(url) {
@@ -89,19 +64,19 @@
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         try {
-          if (img.naturalWidth < 200 || img.naturalHeight < 200) {
-            console.warn('skip small image', url, img.naturalWidth);
-            resolve(null); return;
-          }
+          if (img.naturalWidth < 100) { resolve(null); return; }
           const canvas = document.createElement('canvas');
           canvas.width = img.naturalWidth;
           canvas.height = img.naturalHeight;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/jpeg', 0.92));
-        } catch { resolve(null); }
+          resolve(canvas.toDataURL('image/jpeg', 0.9));
+        } catch(e) { 
+          console.warn('canvas tainted', e); 
+          resolve(null); 
+        }
       };
-      img.onerror = () => resolve(null);
+      img.onerror = () => { console.warn('canvas error', url); resolve(null); };
       img.src = url;
     });
   }
@@ -118,6 +93,7 @@
   async function urlToBase64(url) {
     let b64 = await urlToBase64ViaCanvas(url);
     if (b64) return b64;
+    console.log('[v2l] canvas fail, background', url);
     return await urlToBase64ViaBackground(url);
   }
 
@@ -126,19 +102,22 @@
     const desc = document.querySelector('[data-testid="item-description"]')?.innerText?.trim() || '';
     const priceText = document.querySelector('[data-testid="item-price"]')?.innerText || '';
     const price = parseFloat(priceText.replace(/[^\d.,]/g,'').replace(',','.')) || 0;
-    return { title, description: desc, price, priceText, url: location.href, itemId: getVintedItemId() };
+    return { title, description: desc, price, priceText, url: location.href, itemId: location.pathname.match(/\/items\/(\d+)/)?.[1]||Date.now() };
   }
 
   function injectButton() {
     if (document.getElementById('vinted2leboncoin-btn')) return;
-    const anchor = document.querySelector('[data-testid="item-title"]') || document.querySelector('h1');
-    if (!anchor) return;
+    const anchor = document.querySelector('[data-testid="item-title"]') || document.querySelector('h1') || document.querySelector('main');
+    if (!anchor) { console.log('[v2l] no anchor'); return; }
     const btn = document.createElement('button');
     btn.id = 'vinted2leboncoin-btn';
     btn.textContent = '⚡️ Importer sur Leboncoin';
-    btn.style.cssText = 'background:#ff6e14;color:white;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;margin:12px 0;width:100%;font-size:15px;z-index:9999;';
+    btn.style.cssText = 'background:#ff6e14;color:white;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;margin:12px 0;width:100%;font-size:15px;z-index:9999;display:block;';
     btn.onclick = handleImport;
-    anchor.parentElement?.insertAdjacentElement('afterend', btn);
+    // essaie plusieurs endroits
+    const parent = anchor.parentElement || anchor;
+    parent.insertAdjacentElement('afterend', btn);
+    console.log('[v2l] btn injected');
   }
 
   async function handleImport() {
@@ -147,8 +126,8 @@
     btn.disabled = true;
     try {
       const data = extractData();
-      const urls = await getCleanPhotos();
-      if (!urls.length) { alert('Aucune photo produit trouvée'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
+      const urls = getCleanPhotosFromDOM();
+      if (!urls.length) { alert('Aucune photo - ouvre F12 et envoie la console [v2l]'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
 
       btn.textContent = `⏳ Conversion ${urls.length}...`;
       const photosBase64 = [];
@@ -156,9 +135,10 @@
         btn.textContent = `⏳ ${i+1}/${urls.length}...`;
         const b64 = await urlToBase64(urls[i]);
         if (b64) photosBase64.push(b64);
+        else console.warn('[v2l] skip b64', urls[i]);
       }
 
-      if (!photosBase64.length) { alert('Vinted bloque la conversion'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
+      if (!photosBase64.length) { alert('Conversion échouée - Vinted bloque. Essaie refresh page.'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
 
       const payload = { ...data, photos: urls, photosBase64, date: Date.now() };
       await chrome.storage.local.set({ lastImport: payload });
@@ -171,6 +151,12 @@
     } catch(e){ console.error(e); btn.textContent='❌ Erreur'; btn.disabled=false; }
   }
 
+  // Injection avec retry
+  let tries = 0;
+  const iv = setInterval(() => {
+    injectButton();
+    tries++;
+    if (tries > 20 || document.getElementById('vinted2leboncoin-btn')) clearInterval(iv);
+  }, 500);
   new MutationObserver(injectButton).observe(document.body, {childList:true, subtree:true});
-  injectButton();
 })();
