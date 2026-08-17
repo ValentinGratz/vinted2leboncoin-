@@ -1,4 +1,4 @@
-console.log(' v1.8.4 permissive');
+console.log(' v1.8.5 no canvas');
 function fetchViaBG(url){
   return new Promise((res,rej)=>{
     chrome.runtime.sendMessage({type:'FETCH_IMAGE', url}, r=>{
@@ -7,31 +7,28 @@ function fetchViaBG(url){
     });
   });
 }
-function blobToBase64(blob){
+function blobToBase64Direct(blob){
   return new Promise(resolve=>{
-    const img=new Image(); const url=URL.createObjectURL(blob);
-    img.onload=()=>{
-      const c=document.createElement('canvas'); c.width=img.width; c.height=img.height;
-      c.getContext('2d').drawImage(img,0,0);
-      URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg',0.85));
-    }; img.onerror=()=>{ URL.revokeObjectURL(url); resolve(null); }; img.src=url;
+    const reader=new FileReader();
+    reader.onloadend=()=>resolve(reader.result);
+    reader.onerror=()=>resolve(null);
+    reader.readAsDataURL(blob);
   });
 }
 async function scrape(){
-  // PREND TOUT sans filtrer /f800/ etc
-  let all=[...document.querySelectorAll('img')].map(i=>i.src||'').filter(s=>s.includes('vinted.net')||s.includes('vinted.fr')||s.includes('vinted.com')||s.includes('vinted'));
+  let all=[...document.querySelectorAll('img')].map(i=>i.src||'').filter(s=>s.includes('vinted'));
   console.log(' raw found',all);
   let uniq=[...new Set(all.map(u=>u.split('?')[0]))].slice(0,5);
   console.log(' uniq',uniq);
-  if(uniq.length===0){
-    // dernier fallback : prend les images visibles même petites
-    uniq=[...document.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(s=>s.startsWith('http')).slice(0,5).map(u=>u.split('?')[0]);
-  }
   let b64=[];
   for(let u of uniq){
-    try{ const blob=await fetchViaBG(u); const j=await blobToBase64(blob); if(j) b64.push(j); }catch(e){ console.warn(e); }
+    try{
+      const blob=await fetchViaBG(u);
+      const base64=await blobToBase64Direct(blob);
+      if(base64) b64.push(base64);
+    }catch(e){ console.warn('fail',u,e); }
   }
-  if(b64.length===0){ alert('0 photos - ouvre la console F12 et envoie moi ce qui est écrit  raw found'); return; }
+  if(b64.length===0){ alert('0 photos'); return; }
   const title=document.querySelector('h1')?.innerText||document.title;
   const desc=document.querySelector('[data-testid="item-description"]')?.innerText||'';
   const item={title,description:desc,imageBase64:b64,imageUrls:uniq};
@@ -42,7 +39,7 @@ function addFloating(){
   if(document.getElementById('v2l-float')) return;
   const d=document.createElement('div'); d.id='v2l-float';
   d.style.cssText='position:fixed!important;top:80px!important;right:20px!important;z-index:2147483647!important;background:#ff6e14!important;color:white!important;padding:14px 20px!important;border-radius:12px!important;font-weight:900!important;cursor:pointer!important;box-shadow:0 4px 20px rgba(0,0,0,.4)!important;';
-  d.textContent='⚡ Importer (même en grand)';
+  d.textContent='⚡ Importer v1.8.5';
   d.onclick=scrape;
   document.body.appendChild(d);
 }
