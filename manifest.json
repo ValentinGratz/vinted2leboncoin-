@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Vinted -> Leboncoin - L'outil du siecle",
-  "version": "1.0.1",
-  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic. Fix #6 - plus de logo/avatar.",
+  "version": "1.0.2",
+  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic. Fix #6 CORS final.",
   "permissions": [
     "storage",
     "activeTab",
