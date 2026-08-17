@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Vinted -> Leboncoin - L'outil du siecle",
-  "version": "1.0.0",
-  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic.",
+  "version": "1.0.1",
+  "description": "Importe tes annonces Vinted vers Leboncoin en 1 clic. Fix #6 - plus de logo/avatar.",
   "permissions": [
     "storage",
     "activeTab",
@@ -12,7 +12,10 @@
   "host_permissions": [
     "https://www.vinted.fr/*",
     "https://www.vinted.com/*",
-    "https://www.leboncoin.fr/*"
+    "https://*.vinted.net/*",
+    "https://*.vinted.com/*",
+    "https://www.leboncoin.fr/*",
+    "https://*.leboncoin.fr/*"
   ],
   "action": {
     "default_popup": "popup.html"
