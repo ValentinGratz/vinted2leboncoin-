@@ -1,5 +1,5 @@
-// content-leboncoin.js v1.7.7 STABLE - no reload loop
-console.log('[V2L LBC] v1.7.7 stable');
+// content-leboncoin.js v1.7.8 - fix input hidden + fix textes
+console.log('[V2L LBC] v1.7.8 fix input hidden');
 
 function injectCSS(){
   if(document.getElementById('v2l-style')) return;
@@ -17,51 +17,100 @@ async function fetchViaBackground(url){
   });
 }
 
-let thumbsLoaded = false; // <- ANTI-BOUCLE
+function findFileInput(){
+  // essaie tous les moyens
+  let input = document.querySelector('input[type="file"]');
+  if(input) return input;
+  input = [...document.querySelectorAll('input')].find(i=>i.type==='file');
+  if(input) return input;
+  // dans les shadow DOM
+  const all = document.querySelectorAll('*');
+  for(let el of all){
+    if(el.shadowRoot){
+      const inp = el.shadowRoot.querySelector('input[type="file"]');
+      if(inp) return inp;
+    }
+  }
+  return null;
+}
 
+async function injectPhotos(){
+  const {history}=await chrome.storage.local.get('history');
+  const last=history?.[history.length-1];
+  if(!last?.imageUrls?.length) return alert('Pas de photos - re-importe Vinted');
+
+  let input = findFileInput();
+  console.log(' input found:', input);
+  if(!input){
+    // fallback: crée un input temporaire et drop sur la zone
+    alert('Input LBC caché - je tente le drop direct sur "Ajouter 19 photos"');
+    const dropZone = document.querySelector('[class*="upload"]') || document.querySelector('button')?.parentElement;
+    const dt = new DataTransfer();
+    for(let i=0;i<last.imageUrls.length;i++){
+      try{ const b=await fetchViaBackground(last.imageUrls[i]); dt.items.add(new File([b],`v-${i}.jpg`,{type:'image/jpeg'})); }catch(e){}
+    }
+    if(dropZone){
+      dropZone.dispatchEvent(new DragEvent('dragenter',{bubbles:true,dataTransfer:dt}));
+      dropZone.dispatchEvent(new DragEvent('dragover',{bubbles:true,dataTransfer:dt}));
+      dropZone.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
+      alert(dt.files.length+' photos droppées - si ça marche pas, clique manuellement sur Ajouter 19 photos');
+    }
+    return;
+  }
+
+  const dt=new DataTransfer();
+  for(let i=0;i<last.imageUrls.length;i++){
+    try{ const b=await fetchViaBackground(last.imageUrls[i]); dt.items.add(new File([b],`v-${i}.jpg`,{type:'image/jpeg'})); }catch(e){ console.error(e); }
+  }
+  if(dt.files.length===0) return alert('0 photos fetchées - CORS bloque encore');
+
+  input.files=dt.files;
+  input.dispatchEvent(new Event('change',{bubbles:true}));
+  input.dispatchEvent(new Event('input',{bubbles:true}));
+  alert(dt.files.length+' photos injectées!');
+}
+
+function fillText(){
+  chrome.storage.local.get(['history'], res=>{
+    const last=res.history?.[res.history.length-1];
+    if(!last) return alert('Pas d annonce');
+    // titre - nouveau selecteur LBC
+    const titleSelectors=['input[name="subject"]','#subject','input[data-testid="ad-subject"]','input[placeholder*="titre" i]'];
+    let t=null;
+    for(let s of titleSelectors){ t=document.querySelector(s); if(t) break; }
+    if(!t) t=document.querySelector('input[type="text"]');
+    if(t){ t.focus(); t.value=last.title; t.dispatchEvent(new Event('input',{bubbles:true})); t.dispatchEvent(new Event('change',{bubbles:true})); console.log(' title filled',last.title); }
+    else alert('Titre non trouvé - copie colle manuellement');
+
+    // desc
+    const descEl=document.querySelector('textarea[name="body"]')||document.querySelector('textarea');
+    if(descEl){ descEl.focus(); descEl.value=last.description||last.title; descEl.dispatchEvent(new Event('input',{bubbles:true})); }
+  });
+}
+
+let thumbsLoaded=false;
 async function loadThumbs(){
-  if(thumbsLoaded) return; // ne charge qu'une fois
+  if(thumbsLoaded) return;
   const {history}=await chrome.storage.local.get('history');
   const last=history?.[history.length-1]; if(!last) return;
-  const container=document.getElementById('v2l-thumbs'); if(!container) return;
-
-  thumbsLoaded = true; // bloque les prochains appels
-  container.innerHTML='Chargement...';
-  container.innerHTML='';
-
-  for(let i=0;i<last.imageUrls.length;i++){
+  const c=document.getElementById('v2l-thumbs'); if(!c) return;
+  thumbsLoaded=true; c.innerHTML='';
+  for(let u of last.imageUrls){
     try{
-      const blob=await fetchViaBackground(last.imageUrls[i]);
-      const url=URL.createObjectURL(blob);
-      const img=document.createElement('img');
-      img.src=url;
-      img.style.cssText='width:70px;height:70px;object-fit:cover;border-radius:8px;margin:4px;border:1px solid #eee';
-      container.appendChild(img);
-    }catch(e){ console.error(e); }
+      const b=await fetchViaBackground(u);
+      const url=URL.createObjectURL(b);
+      const img=document.createElement('img'); img.src=url; img.style.cssText='width:60px;height:60px;object-fit:cover;border-radius:8px;margin:3px';
+      c.appendChild(img);
+    }catch(e){}
   }
 }
 
 function addPanel(){
   injectCSS();
-  if(document.getElementById('v2l-panel')) return; // <- ne recrée pas si existe déjà
+  if(document.getElementById('v2l-panel')) return;
   const d=document.createElement('div'); d.id='v2l-panel';
-  d.innerHTML=`<div style="font-weight:800;margin-bottom:8px">Vinted -> Leboncoin FIX</div><button id="v2l-fill" style="background:#111;color:white">1. Remplir texte + prix</button><button id="v2l-photos" style="background:#ff6e14;color:white">2. Injecter photos FIX</button><div id="v2l-thumbs" style="display:flex;flex-wrap:wrap;margin-top:10px"></div>`;
+  d.innerHTML=`<div style="font-weight:800;margin-bottom:8px">Vinted -> Leboncoin FIX v1.7.8</div><button id="v2l-fill" style="background:#111;color:white;width:100%;padding:10px;border:none;border-radius:8px;font-weight:800;margin-bottom:8px">1. Remplir texte + prix</button><button id="v2l-photos" style="background:#ff6e14;color:white;width:100%;padding:10px;border:none;border-radius:8px;font-weight:800">2. Injecter photos FIX</button><div id="v2l-thumbs" style="display:flex;flex-wrap:wrap;margin-top:10px"></div><div style="font-size:10px;color:#888;margin-top:6px" id="v2l-log"></div>`;
   document.body.appendChild(d);
-  document.getElementById('v2l-photos').onclick=async()=>{
-    const {history}=await chrome.storage.local.get('history');
-    const last=history?.[history.length-1];
-    const input=document.querySelector('input[type="file"]');
-    const dt=new DataTransfer();
-    for(let i=0;i<last.imageUrls.length;i++){
-      try{ const b=await fetchViaBackground(last.imageUrls[i]); dt.items.add(new File([b],`v-${i}.jpg`,{type:'image/jpeg'})); }catch(e){}
-    }
-    input.files=dt.files;
-    input.dispatchEvent(new Event('change',{bubbles:true}));
-    alert(dt.files.length+' photos injectées');
-  };
-  loadThumbs();
-}
-
-// UNE SEULE FOIS au chargement, pas toutes les 2 sec pour les thumbs
-addPanel();
-setInterval(()=>{ if(!document.getElementById('v2l-panel')) { thumbsLoaded=false; addPanel(); } }, 3000);
+  document.getElementById('v2l-fill').onclick=fillText;
+  document.getElementById('v2l-photos').onclick=injectPhotos;
+  document.getElementById('v2l-log').textContent='Input:
