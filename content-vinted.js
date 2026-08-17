@@ -1,4 +1,4 @@
-// content-vinted.js - v3.5 FINAL - FIX #6 + single photo
+// content-vinted.js - v3.6 FINAL CORS FIX - convert to base64 on Vinted side
 (() => {
   if (window.__VINTED2LEBONCOIN_INJECTED__) return;
   window.__VINTED2LEBONCOIN_INJECTED__ = true;
@@ -15,19 +15,22 @@
       });
       if (!res.ok) return null;
       const json = await res.json();
-      const photos = json.item?.photos || json.photos || [];
+      const photos = json.item?.photos || [];
       return photos.map(p => (p.full_size_url || p.url || '').split('?')[0]).filter(Boolean);
     } catch { return null; }
   }
 
   function getCleanPhotosFromDOM() {
-    let raw = [...document.querySelectorAll('[data-testid="item-photo"] img, [data-testid="carousel"] img, .item-photos img, [data-testid="image-gallery"] img')]
-      .map(el => el.src || el.dataset.src || el.currentSrc || '')
+    let raw = [...document.querySelectorAll('[data-testid="item-photo"] img, [data-testid="carousel"] img, .item-photos img, [data-testid="image-gallery"] img, figure img')]
+      .map(el => el.src || el.dataset.src || el.currentSrc || el.getAttribute('srcset')?.split(' ')[0] || '')
       .filter(Boolean);
 
     if (raw.length === 0) {
       raw = [...document.querySelectorAll('img')]
-        .filter(img => (img.src||'').toLowerCase().includes('vinted') && (img.naturalWidth||img.width) >= 150)
+        .filter(img => {
+          const src = (img.src||'').toLowerCase();
+          return src.includes('vinted') && (img.naturalWidth||img.width) >= 120;
+        })
         .map(i => i.src);
     }
     if (raw.length === 0) {
@@ -35,7 +38,7 @@
       if (og) raw = [og];
     }
 
-    const blacklist = ['avatar','logo','icon','app-store','google-play','badge','profile','dots'];
+    const blacklist = ['avatar','logo','icon','app-store','google-play','badge','profile','dots','placeholder','notification'];
     return raw.map(u => u.split('?')[0])
       .filter(u => !blacklist.some(b => u.toLowerCase().includes(b)))
       .filter((u,i,s) => s.indexOf(u)===i)
@@ -50,6 +53,23 @@
       if (api?.length) return api;
     }
     return getCleanPhotosFromDOM();
+  }
+
+  async function urlToBase64(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('fetch '+res.status);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result); // data:image/jpeg;base64,...
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch(e) {
+      console.warn('urlToBase64 fail', url, e);
+      return null;
+    }
   }
 
   function extractData() {
@@ -67,28 +87,45 @@
     const btn = document.createElement('button');
     btn.id = 'vinted2leboncoin-btn';
     btn.textContent = '⚡️ Importer sur Leboncoin';
-    btn.style.cssText = 'background:#ff6e14;color:white;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;margin:12px 0;width:100%;font-size:15px;';
+    btn.style.cssText = 'background:#ff6e14;color:white;border:none;padding:12px 20px;border-radius:8px;font-weight:700;cursor:pointer;margin:12px 0;width:100%;font-size:15px;position:relative;z-index:9999;';
     btn.onclick = handleImport;
     anchor.parentElement?.insertAdjacentElement('afterend', btn);
   }
 
   async function handleImport() {
     const btn = document.getElementById('vinted2leboncoin-btn');
-    btn.textContent = '⏳ Récupération...';
+    btn.textContent = '⏳ Récupération photos...';
     btn.disabled = true;
     try {
       const data = extractData();
-      const photos = await getCleanPhotos();
-      if (!photos.length) { alert('Aucune photo'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
-      const payload = { ...data, photos, date: Date.now() };
+      const urls = await getCleanPhotos();
+      if (!urls.length) { alert('Aucune photo trouvée'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
+
+      btn.textContent = `⏳ Conversion ${urls.length} photos...`;
+      const photosBase64 = [];
+      for (let i=0;i<urls.length;i++) {
+        const b64 = await urlToBase64(urls[i]);
+        if (b64) photosBase64.push(b64);
+      }
+
+      if (!photosBase64.length) { alert('Conversion échouée (Vinted bloque)'); btn.textContent='⚡️ Importer'; btn.disabled=false; return; }
+
+      const payload = { ...data, photos: urls, photosBase64, date: Date.now() };
       await chrome.storage.local.set({ lastImport: payload });
       const { history=[] } = await chrome.storage.local.get('history');
       history.unshift(payload);
       await chrome.storage.local.set({ history: history.slice(0,50) });
-      try { chrome.runtime.sendMessage({ action: 'downloadPhotos', photos, itemId: payload.itemId }); } catch {}
-      btn.textContent = `✅ ${photos.length} photo(s)`;
-      setTimeout(() => { window.open('https://www.leboncoin.fr/deposer-une-annonce','_blank'); btn.textContent='⚡️ Importer sur Leboncoin'; btn.disabled=false; }, 600);
-    } catch(e){ btn.textContent='❌ Erreur'; btn.disabled=false; }
+
+      btn.textContent = `✅ ${photosBase64.length} photo(s) prête(s)`;
+      setTimeout(() => {
+        window.open('https://www.leboncoin.fr/deposer-une-annonce','_blank');
+        btn.textContent='⚡️ Importer sur Leboncoin';
+        btn.disabled=false;
+      }, 600);
+    } catch(e){
+      console.error(e);
+      btn.textContent='❌ Erreur'; btn.disabled=false;
+    }
   }
 
   new MutationObserver(injectButton).observe(document.body, {childList:true, subtree:true});
