@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Vinted -> Leboncoin",
-  "version": "1.7.1",
-  "description": "Fix quota exceeded",
+  "name": "Vinted -> Leboncoin - FIX Quota",
+  "version": "1.7.3",
+  "description": "Fix quota exceeded - store URLs only",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
     "*://*.vinted.fr/*",
     "*://*.vinted.com/*",
-    "*://*.leboncoin.fr/*"
+    "*://*.vinted.net/*",
+    "*://*.leboncoin.fr/*",
+    "*://*.leboncoin.com/*"
   ],
   "content_scripts": [
     {
@@ -20,9 +22,6 @@
       "js": [
         "content-vinted.js"
       ],
-      "css": [
-        "content.css"
-      ],
       "run_at": "document_idle"
     },
     {
@@ -32,9 +31,6 @@
       "js": [
         "content-leboncoin.js"
       ],
-      "css": [
-        "content.css"
-      ],
       "run_at": "document_idle"
     }
   ],
@@ -43,21 +39,12 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icon.png",
-      "128": "icon128.png"
-    }
-  },
-  "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
-    "128": "icon128.png"
+    "default_icon": "icon.png"
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "icon.png",
-        "icon128.png"
+        "icon.png"
       ],
       "matches": [
         "*://*.vinted.fr/*",
