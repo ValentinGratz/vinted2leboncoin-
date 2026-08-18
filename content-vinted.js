@@ -1,46 +1,131 @@
-console.log(' v1.8.5 no canvas');
-function fetchViaBG(url){
-  return new Promise((res,rej)=>{
-    chrome.runtime.sendMessage({type:'FETCH_IMAGE', url}, r=>{
-      if(!r||!r.ok) return rej('bg fail');
-      res(new Blob([new Uint8Array(r.buffer)],{type:r.type||'image/jpeg'}));
+// content-vinted.js - v1.7.4
+// Ne touche jamais IndexedDB ni storage.local directement : passe par le background.
+
+function sendToBackground(type, payload) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type, payload }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (!response) {
+        reject(new Error("Pas de réponse du background"));
+        return;
+      }
+      resolve(response);
     });
   });
 }
-function blobToBase64Direct(blob){
-  return new Promise(resolve=>{
-    const reader=new FileReader();
-    reader.onloadend=()=>resolve(reader.result);
-    reader.onerror=()=>resolve(null);
-    reader.readAsDataURL(blob);
+
+function extractIdFromUrl(url) {
+  if (!url) return null;
+  const match = url.match(/\/items\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+function extractItemFromArticle(article) {
+  const link =
+    article.querySelector('a[href*="/items/"]') ||
+    (article.tagName === "A" && article.href ? article : null);
+
+  if (!link) return null;
+
+  const url = link.href.startsWith("http") ? link.href : new URL(link.getAttribute("href"), location.origin).href;
+  const id = extractIdFromUrl(url);
+  if (!id) return null;
+
+  const titleEl =
+    article.querySelector('[data-testid$="--description-title"]') ||
+    article.querySelector("h3, h2, [title]");
+  const title = (titleEl && (titleEl.getAttribute("title") || titleEl.textContent) || "").trim();
+
+  const priceEl = article.querySelector('[data-testid$="--price-text"]') || article.querySelector('[class*="price"]');
+  const price = (priceEl && priceEl.textContent || "").trim();
+
+  return { id, url, title, price };
+}
+
+function scrapeArticles() {
+  const nodes = document.querySelectorAll(
+    'article[data-testid], a[href*="/items/"], div[data-testid*="item-box"]'
+  );
+
+  const items = [];
+  const seen = new Set();
+
+  nodes.forEach((node) => {
+    const item = extractItemFromArticle(node);
+    if (item && !seen.has(item.id)) {
+      seen.add(item.id);
+      items.push(item);
+    }
   });
+
+  return items;
 }
-async function scrape(){
-  let all=[...document.querySelectorAll('img')].map(i=>i.src||'').filter(s=>s.includes('vinted'));
-  console.log(' raw found',all);
-  let uniq=[...new Set(all.map(u=>u.split('?')[0]))].slice(0,5);
-  console.log(' uniq',uniq);
-  let b64=[];
-  for(let u of uniq){
-    try{
-      const blob=await fetchViaBG(u);
-      const base64=await blobToBase64Direct(blob);
-      if(base64) b64.push(base64);
-    }catch(e){ console.warn('fail',u,e); }
+
+async function updateVintedIdsIndex(newIds) {
+  if (!newIds || newIds.length === 0) return;
+
+  try {
+    const existing = await new Promise((resolve) => {
+      chrome.storage.local.get(["vintedIds"], (res) => resolve(res.vintedIds || []));
+    });
+
+    const idSet = new Set(existing);
+    let changed = false;
+    newIds.forEach((id) => {
+      if (!idSet.has(id)) {
+        idSet.add(id);
+        changed = true;
+      }
+    });
+
+    if (!changed) return;
+
+    await sendToBackground("SAFE_SET", {
+      vintedIds: Array.from(idSet),
+      lastSync: Date.now(),
+    });
+  } catch (err) {
+    console.error("[vinted2leboncoin] Échec mise à jour index vintedIds", err);
   }
-  if(b64.length===0){ alert('0 photos'); return; }
-  const title=document.querySelector('h1')?.innerText||document.title;
-  const desc=document.querySelector('[data-testid="item-description"]')?.innerText||'';
-  const item={title,description:desc,imageBase64:b64,imageUrls:uniq};
-  const r=await chrome.storage.local.get(['history']); let h=r.history||[]; h.push(item); h=h.slice(-10); await chrome.storage.local.set({history:h});
-  alert(b64.length+' photos converties - va sur LBC');
 }
-function addFloating(){
-  if(document.getElementById('v2l-float')) return;
-  const d=document.createElement('div'); d.id='v2l-float';
-  d.style.cssText='position:fixed!important;top:80px!important;right:20px!important;z-index:2147483647!important;background:#ff6e14!important;color:white!important;padding:14px 20px!important;border-radius:12px!important;font-weight:900!important;cursor:pointer!important;box-shadow:0 4px 20px rgba(0,0,0,.4)!important;';
-  d.textContent='⚡ Importer v1.8.5';
-  d.onclick=scrape;
-  document.body.appendChild(d);
+
+async function syncScrapedItems() {
+  const items = scrapeArticles();
+  if (items.length === 0) return;
+
+  const putResults = await Promise.allSettled(items.map((item) => sendToBackground("IDB_PUT", item)));
+
+  const successfulIds = items
+    .filter((_, idx) => putResults[idx].status === "fulfilled" && putResults[idx].value.success)
+    .map((item) => item.id);
+
+  await updateVintedIdsIndex(successfulIds);
+
+  console.log(`[vinted2leboncoin] Sync: ${successfulIds.length}/${items.length} items sauvegardés en IndexedDB`);
 }
-setInterval(addFloating,1000);
+
+async function getAllItems() {
+  const response = await sendToBackground("IDB_GET_ALL");
+  return response.success ? response.data : [];
+}
+
+// Lancement initial + observation des changements DOM (chargement infini / pagination dynamique)
+function init() {
+  syncScrapedItems();
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(init._debounce);
+    init._debounce = setTimeout(syncScrapedItems, 800);
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

@@ -1,16 +1,76 @@
-<!doctype html><html><head><meta charset="utf-8"><style>
-body{width:360px;font-family:Inter,system-ui;padding:16px;margin:0;background:#fafafa}
-h1{font-size:18px;margin:0 0 6px;font-weight:900}
-.card{background:white;border-radius:14px;padding:12px;border:1px solid #eee;margin-bottom:10px;display:flex;gap:10px}
-.card img{width:64px;height:64px;object-fit:cover;border-radius:10px;background:#f0f0f0}
-.btn{width:100%;background:#111;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;cursor:pointer;margin-top:8px}
-.btn.orange{background:#ff6e14}
-.btn.fix{background:#ff3b30}
-.empty{padding:30px;text-align:center;color:#888;font-size:13px}
-</style></head><body>
-<h1>Vinted -> Leboncoin</h1><div style="color:#666;font-size:13px;margin-bottom:14px">L'outil du siecle. 1 clic. FIX QUOTA</div>
-<button class="btn fix" id="clear-storage">🧹 Vider cache (fix quota) - CLIQUE 1 FOIS</button>
-<div id="list"></div>
-<button class="btn orange" id="goLBC">+ Deposer sur Leboncoin</button>
-<button class="btn" id="clear">Vider historique</button>
-<script src="popup.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Vinted -> Leboncoin</title>
+<style>
+  body {
+    width: 260px;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    padding: 14px;
+    color: #1a1a1a;
+  }
+  h1 {
+    font-size: 15px;
+    margin: 0 0 12px;
+  }
+  .stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+  }
+  .stat span:last-child {
+    font-weight: 600;
+  }
+  .actions {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  button {
+    padding: 8px 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #btn-clear {
+    background: #ffe1e1;
+    color: #a00;
+  }
+  #btn-migrate {
+    background: #e1eaff;
+    color: #1a3a8f;
+  }
+  #btn-export {
+    background: #e1ffe6;
+    color: #1a7a2f;
+  }
+  #status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #666;
+    min-height: 14px;
+  }
+</style>
+</head>
+<body>
+  <h1>Vinted -> Leboncoin</h1>
+
+  <div class="stat"><span>Items stockés</span><span id="count">-</span></div>
+  <div class="stat"><span>Usage storage.local</span><span id="usage">-</span></div>
+
+  <div class="actions">
+    <button id="btn-migrate">Migrer maintenant</button>
+    <button id="btn-export">Exporter en JSON</button>
+    <button id="btn-clear">Vider IndexedDB</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
