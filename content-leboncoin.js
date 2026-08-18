@@ -69,6 +69,7 @@ const state = {
   filledDescription: false,
   filledPrice: false,
   filledImages: false,
+  imagesAttemptFailed: false,
 };
 
 async function tryFillTitle() {
@@ -119,28 +120,36 @@ async function tryFillPrice() {
 }
 
 async function tryFillImages() {
-  if (state.filledImages || !state.data.images || state.data.images.length === 0) return;
+  if (state.filledImages || state.imagesAttemptFailed || !state.data.images || state.data.images.length === 0) return;
 
-  const fileInput = document.querySelector('input[type="file"][accept*="image"], input[type="file"]');
-  if (!fileInput) return;
+  const fileInput = document.querySelector(
+    'input[type="file"][accept*="image"][multiple], input[type="file"][multiple], input[type="file"][accept*="image"], input[type="file"]'
+  );
+  if (!fileInput) return; // pas encore monté, on réessaiera au prochain mutation event
 
-  state.filledImages = true; // marqué tout de suite pour ne jamais relancer un double-upload
+  console.log(`[vinted2leboncoin] Champ photo trouvé, tentative d'import de ${state.data.images.length} image(s)`);
 
   const files = [];
   for (const url of state.data.images.slice(0, 10)) {
     try {
       const res = await fetch(url, { mode: "cors" });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[vinted2leboncoin] fetch image ${url} -> HTTP ${res.status}`);
+        continue;
+      }
       const blob = await res.blob();
       const filename = url.split("/").pop().split("?")[0] || `photo-${Date.now()}.jpg`;
       files.push(new File([blob], filename, { type: blob.type || "image/jpeg" }));
     } catch (err) {
-      console.warn(`[vinted2leboncoin] Échec récupération image ${url} (CORS probable):`, err.message);
+      console.warn(`[vinted2leboncoin] Échec fetch image ${url} (probablement bloqué par CORS côté CDN Vinted):`, err.message);
     }
   }
 
   if (files.length === 0) {
-    console.warn("[vinted2leboncoin] Aucune photo n'a pu être importée automatiquement, réimporte-les à la main");
+    state.imagesAttemptFailed = true; // on arrête d'essayer, ça ne marchera pas mieux au prochain essai
+    console.warn(
+      "[vinted2leboncoin] 0 photo importée automatiquement (probablement CORS). Réimporte-les manuellement avec le bouton 'Ajouter des photos'."
+    );
     notifyProgress();
     return;
   }
@@ -150,7 +159,10 @@ async function tryFillImages() {
     files.forEach((f) => dataTransfer.items.add(f));
     fileInput.files = dataTransfer.files;
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    state.filledImages = true;
+    console.log(`[vinted2leboncoin] ${files.length} photo(s) injectée(s) dans le champ upload`);
   } catch (err) {
+    state.imagesAttemptFailed = true;
     console.warn("[vinted2leboncoin] Impossible d'injecter les fichiers dans l'input photo:", err.message);
   }
 
@@ -187,11 +199,17 @@ function notifyProgress() {
   if (state.filledPrice) parts.push("prix");
   if (state.filledImages) parts.push("photos");
 
-  if (parts.length === 0) return;
+  if (parts.length === 0 && !state.imagesAttemptFailed) return;
 
-  showBanner(`Pré-rempli depuis Vinted : ${parts.join(", ")}. Vérifie avant de publier.`);
+  let message = parts.length > 0 ? `Pré-rempli depuis Vinted : ${parts.join(", ")}.` : "Pré-remplissage en cours...";
+  if (state.imagesAttemptFailed) {
+    message += " Photos non importées automatiquement (upload manuel requis).";
+  }
+  message += " Vérifie avant de publier.";
 
-  const allDone = state.filledTitle && state.filledDescription && state.filledImages;
+  showBanner(message);
+
+  const allDone = state.filledTitle && state.filledDescription && (state.filledImages || state.imagesAttemptFailed);
   if (allDone) {
     sendToBackground("LBC_CLEAR_PENDING");
   }
