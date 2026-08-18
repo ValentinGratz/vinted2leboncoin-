@@ -74,6 +74,7 @@ const state = {
 async function tryFillTitle() {
   if (state.filledTitle || !state.data.title) return;
   const el = findField([
+    'input[name="subject"]',
     'input[name="title"]',
     'input[id*="title"]',
     'input[placeholder*="titre" i]',
@@ -89,6 +90,7 @@ async function tryFillTitle() {
 async function tryFillDescription() {
   if (state.filledDescription || !state.data.description) return;
   const el = findField([
+    'textarea[name="body"]',
     'textarea[name="description"]',
     'textarea[id*="description"]',
     'textarea[placeholder*="description" i]',
