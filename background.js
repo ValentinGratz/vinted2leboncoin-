@@ -8,6 +8,18 @@ const OLD_KEYS_TO_MIGRATE = ["items", "dressing", "products", "vintedData", "pro
 
 let dbPromise = null;
 
+// Conversion blob -> data URL sans FileReader (pas toujours dispo en service worker MV3).
+async function blobToBase64(blob) {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return `data:${blob.type || "image/jpeg"};base64,${btoa(binary)}`;
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB helpers - vanilla, syntaxe transaction correcte partout
 // ---------------------------------------------------------------------------
@@ -287,12 +299,32 @@ async function handleMessage(message) {
       return { success: true, data };
     }
     case "LBC_PREPARE": {
-      // Objet unique, petit (titre/description/prix/urls d'images) -> storage.local suffit largement.
       if (!payload || !payload.title) {
         return { success: false, error: "Payload LBC_PREPARE invalide (titre manquant)" };
       }
-      await chrome.storage.local.set({ pendingTransfer: payload });
-      return { success: true, data: payload };
+
+      const imagesWithData = [];
+      for (const url of (payload.images || []).slice(0, 10)) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            console.warn(`[vinted2leboncoin] LBC_PREPARE: HTTP ${res.status} pour ${url}`);
+            continue;
+          }
+          const blob = await res.blob();
+          const dataUrl = await blobToBase64(blob);
+          const filename = url.split("/").pop().split("?")[0] || `photo-${Date.now()}.jpg`;
+          imagesWithData.push({ url, dataUrl, filename });
+        } catch (err) {
+          // Si ce fetch échoue même en background, le domaine de l'image n'est
+          // probablement pas couvert par host_permissions (voir manifest.json).
+          console.warn(`[vinted2leboncoin] LBC_PREPARE: échec fetch background pour ${url}`, err.message);
+        }
+      }
+
+      const enrichedPayload = { ...payload, images: imagesWithData };
+      await chrome.storage.local.set({ pendingTransfer: enrichedPayload });
+      return { success: true, data: enrichedPayload };
     }
     case "LBC_GET_PENDING": {
       const { pendingTransfer } = await chrome.storage.local.get(["pendingTransfer"]);
