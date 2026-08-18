@@ -17,7 +17,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.leboncoin.fr/*"],
+      "matches": ["*://*.leboncoin.fr/deposer-une-annonce/*"],
       "js": ["content-leboncoin.js"],
       "run_at": "document_idle"
     }

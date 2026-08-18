@@ -135,12 +135,133 @@ async function getAllItems() {
   return response.success ? response.data : [];
 }
 
+// ---------------------------------------------------------------------------
+// Transfert d'une fiche unique vers Leboncoin (pré-remplissage, pas de publication auto)
+// ---------------------------------------------------------------------------
+
+function isSingleItemPage() {
+  return /^\/items\/\d+/.test(location.pathname);
+}
+
+function parseJsonLdProduct() {
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script.textContent);
+      const candidates = Array.isArray(data) ? data : [data];
+      for (const c of candidates) {
+        if (c && (c["@type"] === "Product" || c["@type"] === "Offer")) return c;
+      }
+    } catch (e) {
+      // JSON-LD malformé, on ignore et on retombe sur le DOM
+    }
+  }
+  return null;
+}
+
+function extractSingleItemData() {
+  const ld = parseJsonLdProduct();
+
+  let title = ld && ld.name;
+  let description = ld && ld.description;
+  let price =
+    ld && ld.offers && (ld.offers.price || (Array.isArray(ld.offers) && ld.offers[0] && ld.offers[0].price));
+  let images = ld && ld.image ? (Array.isArray(ld.image) ? ld.image : [ld.image]) : [];
+
+  if (!title) {
+    const titleEl = document.querySelector('h1, [data-testid="item-page-summary-plugin"] h1, [itemprop="name"]');
+    title = (titleEl && titleEl.textContent || "").trim();
+  }
+
+  if (!description) {
+    const descEl = document.querySelector(
+      '[data-testid="item-description-content"], [itemprop="description"], [class*="description"]'
+    );
+    description = (descEl && descEl.textContent || "").trim();
+  }
+
+  if (!price) {
+    const priceEl = document.querySelector('[data-testid$="price"], [itemprop="price"], [class*="price"]');
+    price = (priceEl && (priceEl.getAttribute("content") || priceEl.textContent) || "").trim();
+  }
+
+  if (!images || images.length === 0) {
+    images = Array.from(document.querySelectorAll('[data-testid*="gallery"] img, [class*="gallery"] img, img[srcset]'))
+      .map((img) => img.currentSrc || img.src)
+      .filter(Boolean);
+    images = Array.from(new Set(images)).slice(0, 20);
+  }
+
+  return {
+    sourceUrl: location.href,
+    title: String(title || "").trim().slice(0, 200),
+    description: String(description || "").trim().slice(0, 4000),
+    price: String(price || "").replace(/[^\d,.\s€]/g, "").trim(),
+    images,
+    ts: Date.now(),
+  };
+}
+
+function injectLeboncoinTransferButton() {
+  if (document.getElementById("vc-lbc-transfer-btn")) return; // déjà injecté
+
+  const anchor =
+    document.querySelector('[data-testid="item-page-summary-plugin"]') ||
+    document.querySelector("h1")?.closest("div") ||
+    document.body;
+
+  if (!anchor) return;
+
+  safeInsert(
+    anchor,
+    `<button id="vc-lbc-transfer-btn" style="
+        margin:10px 0;padding:10px 14px;background:#ff6e14;color:#fff;border:none;
+        border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;
+      ">Envoyer vers Leboncoin</button>`
+  );
+
+  const btn = document.getElementById("vc-lbc-transfer-btn");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Préparation...";
+
+    try {
+      const payload = extractSingleItemData();
+      if (!payload.title) {
+        throw new Error("Impossible d'extraire le titre de l'annonce");
+      }
+
+      const res = await sendToBackground("LBC_PREPARE", payload);
+      if (!res.success) throw new Error(res.error || "Échec préparation");
+
+      btn.textContent = "Ouverture Leboncoin...";
+      window.open("https://www.leboncoin.fr/deposer-une-annonce/", "_blank");
+
+      setTimeout(() => {
+        btn.textContent = "Envoyer vers Leboncoin";
+        btn.disabled = false;
+      }, 2000);
+    } catch (err) {
+      console.error("[vinted2leboncoin] Échec transfert vers Leboncoin", err);
+      btn.textContent = "Erreur, réessayer";
+      btn.disabled = false;
+    }
+  });
+}
+
 function init() {
   syncScrapedItems();
 
+  if (isSingleItemPage()) {
+    injectLeboncoinTransferButton();
+  }
+
   const observer = new MutationObserver(() => {
     clearTimeout(init._debounce);
-    init._debounce = setTimeout(syncScrapedItems, 800);
+    init._debounce = setTimeout(() => {
+      syncScrapedItems();
+      if (isSingleItemPage()) injectLeboncoinTransferButton();
+    }, 800);
   });
 
   observer.observe(document.body, { childList: true, subtree: true });

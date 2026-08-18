@@ -1,8 +1,187 @@
-console.log('[V2L LBC] v1.8.4 BASE64');
-function injectCSS(){ if(document.getElementById('v2l-style')) return; const s=document.createElement('style'); s.id='v2l-style'; s.textContent='#v2l-panel{position:fixed!important;top:100px!important;right:20px!important;z-index:9999999!important;background:#fff!important;border:2px solid #ff6e14!important;border-radius:14px!important;padding:14px!important;width:300px!important}#v2l-panel img{width:70px;height:70px;object-fit:cover;margin:3px;border-radius:8px}'; document.head.appendChild(s);}
-function dataURLtoFile(dataurl, filename){ const arr=dataurl.split(','), mime=arr[0].match(/:(.*?);/)[1], bstr=atob(arr[1]); let n=bstr.length; const u8=new Uint8Array(n); while(n--){u8[n]=bstr.charCodeAt(n);} return new File(,filename,{type:mime}); }
-function findInput(){ let i=document.querySelector('input[type=file]'); if(i) return i; for(let a of document.querySelectorAll('input')) if(a.type==='file') return a; return null; }
-async function inject(){ const h=await chrome.storage.local.get(['history']); const last=h.history?.[h.history.length-1]; if(!last) return alert('pas d histoire'); const src=(last.imageBase64&&last.imageBase64.length>0)?last.imageBase64:last.imageUrls; if(!src[0].startsWith('data:')) return alert('re-importe depuis Vinted avec v1.8.4'); const input=findInput(); if(!input){ alert('scroll jusqu à Vos photos sur LBC'); return; } const dt=new DataTransfer(); for(let i=0;i<src.length;i++){ dt.items.add(dataURLtoFile(src[i],'photo-'+i+'.jpg')); } input.files=dt.files; input.dispatchEvent(new Event('change',{bubbles:true})); alert(dt.files.length+' photos injectées'); }
-function fill(){ chrome.storage.local.get(['history'],r=>{ const last=r.history?.[r.history.length-1]; if(!last) return; const t=document.querySelector('input[name="subject"]')||document.querySelector('#subject')||document.querySelector('input[type=text]'); if(t){t.value=last.title; t.dispatchEvent(new Event('input',{bubbles:true}));} const ta=document.querySelector('textarea'); if(ta){ta.value=last.description; ta.dispatchEvent(new Event('input',{bubbles:true}));}}); }
-function addPanel(){ if(document.getElementById('v2l-panel')) return; injectCSS(); const d=document.createElement('div'); d.id='v2l-panel'; d.innerHTML='<div style="font-weight:800">V2L v1.8.4</div><button id="f1" style="background:#111;color:#fff;width:100%;padding:10px;border-radius:8px;margin-bottom:8px;border:none">1. Remplir texte</button><button id="f2" style="background:#ff6e14;color:#fff;width:100%;padding:10px;border-radius:8px;border:none">2. Injecter JPEG</button><div id="v2l-thumbs" style="display:flex;flex-wrap:wrap;margin-top:10px"></div>'; document.body.appendChild(d); document.getElementById('f1').onclick=fill; document.getElementById('f2').onclick=inject; (async()=>{ const h=await chrome.storage.local.get(['history']); const last=h.history?.[h.history.length-1]; if(!last) return; const c=document.getElementById('v2l-thumbs'); const src=(last.imageBase64&&last.imageBase64.length>0)?last.imageBase64:last.imageUrls; for(let u of src){ const im=document.createElement('img'); im.src=u; c.appendChild(im); } })(); }
-addPanel();
+// content-leboncoin.js - v1.7.4
+// Pré-remplit le formulaire "Déposer une annonce" avec les données envoyées
+// depuis une fiche Vinted. Ne publie JAMAIS automatiquement : l'utilisateur
+// garde la main pour vérifier/compléter/valider avant de publier.
+
+function sendToBackground(type, payload) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type, payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(response || { success: false, error: "Pas de réponse" });
+      });
+    } catch (err) {
+      resolve({ success: false, error: err.message || String(err) });
+    }
+  });
+}
+
+// Nécessaire pour déclencher correctement les composants contrôlés (React/Vue)
+// : un simple `element.value = x` ne notifie pas le framework.
+function getNativeValueSetter(element) {
+  let proto = Object.getPrototypeOf(element);
+  while (proto) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
+    if (descriptor && descriptor.set) return descriptor.set;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return null;
+}
+
+function setFieldValue(element, value) {
+  if (!element || value === undefined || value === null) return false;
+
+  const setter = getNativeValueSetter(element);
+  if (setter) {
+    setter.call(element, value);
+  } else {
+    element.value = value;
+  }
+
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new Event("blur", { bubbles: true }));
+  return true;
+}
+
+function findField(selectors) {
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
+async function fillTextFields(data) {
+  const filled = [];
+
+  const titleEl = findField([
+    'input[name="title"]',
+    'input[id*="title"]',
+    'input[placeholder*="titre" i]',
+    '[data-testid*="title"] input',
+  ]);
+  if (titleEl && setFieldValue(titleEl, data.title)) filled.push("titre");
+
+  const descEl = findField([
+    'textarea[name="description"]',
+    'textarea[id*="description"]',
+    'textarea[placeholder*="description" i]',
+    '[data-testid*="description"] textarea',
+  ]);
+  if (descEl && setFieldValue(descEl, data.description)) filled.push("description");
+
+  const priceEl = findField([
+    'input[name="price"]',
+    'input[id*="price"]',
+    'input[placeholder*="prix" i]',
+    '[data-testid*="price"] input',
+  ]);
+  if (priceEl && data.price && setFieldValue(priceEl, data.price)) filled.push("prix");
+
+  return filled;
+}
+
+// Meilleur effort pour les photos : on tente de récupérer chaque image et de
+// la poser dans le champ d'upload via DataTransfer. Ça peut échouer si le
+// CDN d'images source bloque le fetch cross-origin (pas de header CORS) —
+// dans ce cas on log un avertissement et l'utilisateur réimporte les photos
+// à la main, ce qui reste le fallback normal.
+async function fillImages(images) {
+  if (!images || images.length === 0) return 0;
+
+  const fileInput = document.querySelector('input[type="file"][accept*="image"], input[type="file"]');
+  if (!fileInput) {
+    console.warn("[vinted2leboncoin] Aucun champ d'upload photo trouvé sur la page");
+    return 0;
+  }
+
+  const files = [];
+  for (const url of images.slice(0, 10)) {
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const filename = url.split("/").pop().split("?")[0] || `photo-${Date.now()}.jpg`;
+      files.push(new File([blob], filename, { type: blob.type || "image/jpeg" }));
+    } catch (err) {
+      console.warn(`[vinted2leboncoin] Échec récupération image ${url} (CORS probable):`, err.message);
+    }
+  }
+
+  if (files.length === 0) return 0;
+
+  try {
+    const dataTransfer = new DataTransfer();
+    files.forEach((f) => dataTransfer.items.add(f));
+    fileInput.files = dataTransfer.files;
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    return files.length;
+  } catch (err) {
+    console.warn("[vinted2leboncoin] Impossible d'injecter les fichiers dans l'input photo:", err.message);
+    return 0;
+  }
+}
+
+function showBanner(message) {
+  if (document.getElementById("vc-lbc-banner")) return;
+
+  const banner = document.createElement("div");
+  banner.id = "vc-lbc-banner";
+  banner.style.cssText = `
+    position:fixed;top:12px;right:12px;z-index:999999;
+    background:#1a3a8f;color:#fff;padding:12px 16px;border-radius:8px;
+    font-size:13px;font-family:sans-serif;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,.2);
+  `;
+  banner.textContent = message;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕";
+  closeBtn.style.cssText = "margin-left:10px;background:none;border:none;color:#fff;cursor:pointer;font-weight:bold;";
+  closeBtn.addEventListener("click", () => banner.remove());
+  banner.appendChild(closeBtn);
+
+  document.body.appendChild(banner);
+}
+
+async function tryFillForm(attemptsLeft) {
+  const titleFieldExists = document.querySelector('input[name="title"], input[id*="title"], input[placeholder*="titre" i]');
+
+  if (!titleFieldExists) {
+    if (attemptsLeft <= 0) {
+      console.warn("[vinted2leboncoin] Formulaire Leboncoin introuvable après plusieurs tentatives");
+      return;
+    }
+    setTimeout(() => tryFillForm(attemptsLeft - 1), 700);
+    return;
+  }
+
+  const pendingRes = await sendToBackground("LBC_GET_PENDING");
+  if (!pendingRes.success || !pendingRes.data) return;
+
+  const data = pendingRes.data;
+  const filledFields = await fillTextFields(data);
+  const filledImages = await fillImages(data.images);
+
+  await sendToBackground("LBC_CLEAR_PENDING"); // évite un re-remplissage au prochain rechargement
+
+  const parts = [];
+  if (filledFields.length > 0) parts.push(`champs: ${filledFields.join(", ")}`);
+  parts.push(`${filledImages}/${(data.images || []).length} photo(s) importée(s)`);
+
+  showBanner(`Pré-rempli depuis Vinted (${parts.join(" — ")}). Vérifie avant de publier.`);
+}
+
+function init() {
+  // SPA : le formulaire peut mettre du temps à monter, on retente plusieurs fois.
+  tryFillForm(15);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}

@@ -286,6 +286,22 @@ async function handleMessage(message) {
       const data = await migrateNow();
       return { success: true, data };
     }
+    case "LBC_PREPARE": {
+      // Objet unique, petit (titre/description/prix/urls d'images) -> storage.local suffit largement.
+      if (!payload || !payload.title) {
+        return { success: false, error: "Payload LBC_PREPARE invalide (titre manquant)" };
+      }
+      await chrome.storage.local.set({ pendingTransfer: payload });
+      return { success: true, data: payload };
+    }
+    case "LBC_GET_PENDING": {
+      const { pendingTransfer } = await chrome.storage.local.get(["pendingTransfer"]);
+      return { success: true, data: pendingTransfer || null };
+    }
+    case "LBC_CLEAR_PENDING": {
+      await chrome.storage.local.remove("pendingTransfer");
+      return { success: true, data: true };
+    }
     default:
       return { success: false, error: `Type de message inconnu: ${type}` };
   }
