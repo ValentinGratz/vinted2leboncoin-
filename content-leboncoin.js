@@ -127,28 +127,25 @@ async function tryFillImages() {
   );
   if (!fileInput) return; // pas encore monté, on réessaiera au prochain mutation event
 
-  console.log(`[vinted2leboncoin] Champ photo trouvé, tentative d'import de ${state.data.images.length} image(s)`);
+  console.log(`[vinted2leboncoin] Champ photo trouvé, ${state.data.images.length} image(s) déjà récupérées par le background`);
 
   const files = [];
-  for (const url of state.data.images.slice(0, 10)) {
+  for (const img of state.data.images) {
+    if (!img || !img.dataUrl) continue; // le fetch a échoué côté background pour celle-ci
     try {
-      const res = await fetch(url, { mode: "cors" });
-      if (!res.ok) {
-        console.warn(`[vinted2leboncoin] fetch image ${url} -> HTTP ${res.status}`);
-        continue;
-      }
+      // fetch() sur une data: URL ne fait aucune requête réseau, donc jamais de CORS ici.
+      const res = await fetch(img.dataUrl);
       const blob = await res.blob();
-      const filename = url.split("/").pop().split("?")[0] || `photo-${Date.now()}.jpg`;
-      files.push(new File([blob], filename, { type: blob.type || "image/jpeg" }));
+      files.push(new File([blob], img.filename || `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" }));
     } catch (err) {
-      console.warn(`[vinted2leboncoin] Échec fetch image ${url} (probablement bloqué par CORS côté CDN Vinted):`, err.message);
+      console.warn(`[vinted2leboncoin] Échec reconstruction fichier pour ${img.filename}:`, err.message);
     }
   }
 
   if (files.length === 0) {
-    state.imagesAttemptFailed = true; // on arrête d'essayer, ça ne marchera pas mieux au prochain essai
+    state.imagesAttemptFailed = true;
     console.warn(
-      "[vinted2leboncoin] 0 photo importée automatiquement (probablement CORS). Réimporte-les manuellement avec le bouton 'Ajouter des photos'."
+      "[vinted2leboncoin] 0 photo disponible (le background n'a pas réussi à les récupérer). Réimporte-les manuellement."
     );
     notifyProgress();
     return;
