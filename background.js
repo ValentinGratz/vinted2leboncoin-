@@ -1,17 +1,15 @@
-// background.js - v1.7.4
+// background.js - v1.7.4 (fix)
 // Seul fichier autorisé à toucher IndexedDB.
-// storage.local reste minimal : { vintedIds: string[], lastSync: number, migrated: boolean }
 
 const DB_NAME = "vinted2leboncoin";
 const DB_VERSION = 1;
 const STORE_NAME = "items";
 const OLD_KEYS_TO_MIGRATE = ["items", "dressing", "products", "vintedData", "produits"];
-const MIGRATION_ARRAY_SIZE_THRESHOLD = 100 * 1024; // 100 ko
 
 let dbPromise = null;
 
 // ---------------------------------------------------------------------------
-// IndexedDB helpers
+// IndexedDB helpers - vanilla, syntaxe transaction correcte partout
 // ---------------------------------------------------------------------------
 
 function getDB() {
@@ -45,27 +43,35 @@ function getDB() {
   return dbPromise;
 }
 
-async function idbPut(item) {
-  if (!item || !item.id) {
-    throw new Error("idbPut: item invalide (id manquant)");
+function fallbackId(item) {
+  if (item && item.id) return item.id;
+  if (item && item.url) {
+    const match = item.url.match(/\/items\/(\d+)/);
+    if (match) return match[1];
   }
+  return Date.now().toString() + Math.random().toString(36).slice(2);
+}
+
+async function idbPut(rawItem) {
+  const item = { ts: Date.now(), ...rawItem };
+  item.id = fallbackId(item); // jamais undefined -> plus de rejet keyPath
+
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const itemToStore = { ts: Date.now(), ...item };
-    const req = store.put(itemToStore);
-    req.onsuccess = () => resolve(itemToStore);
-    req.onerror = () => reject(req.error);
+    tx.objectStore(STORE_NAME).put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
+
+  return item;
 }
 
 async function idbGetAll() {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
+    const req = tx.objectStore(STORE_NAME).getAll();
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
   });
@@ -73,32 +79,31 @@ async function idbGetAll() {
 
 async function idbDelete(id) {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.delete(id);
-    req.onsuccess = () => resolve(true);
-    req.onerror = () => reject(req.error);
+    tx.objectStore(STORE_NAME).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
+  return true;
 }
 
 async function idbClear() {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.clear();
-    req.onsuccess = () => resolve(true);
-    req.onerror = () => reject(req.error);
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
+  return true;
 }
 
 async function idbCount() {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.count();
+    const req = tx.objectStore(STORE_NAME).count();
     req.onsuccess = () => resolve(req.result || 0);
     req.onerror = () => reject(req.error);
   });
@@ -137,10 +142,7 @@ function isQuotaError(err) {
 async function getBytesInUse() {
   return new Promise((resolve) => {
     if (chrome.storage.local.getBytesInUse) {
-      chrome.storage.local.getBytesInUse(null, (bytes) => {
-        console.log(`[vinted2leboncoin] storage.local bytes in use: ${bytes}`);
-        resolve(bytes || 0);
-      });
+      chrome.storage.local.getBytesInUse(null, (bytes) => resolve(bytes || 0));
     } else {
       resolve(0);
     }
@@ -150,34 +152,22 @@ async function getBytesInUse() {
 async function safeStorageSet(data) {
   try {
     await chrome.storage.local.set(data);
-    await getBytesInUse();
     return { success: true, data };
   } catch (err) {
     if (!isQuotaError(err)) {
       return { success: false, error: err.message || String(err) };
     }
 
-    console.warn("[vinted2leboncoin] QUOTA_BYTES atteint, éviction LRU 20% + retry");
-
     try {
       const deletedCount = await idbDeleteOldestPercent(0.2);
+      const remainingItems = await idbGetAll();
+      const remainingIdSet = new Set(remainingItems.map((i) => i.id));
 
-      const existing = await chrome.storage.local.get(["vintedIds"]);
-      const currentIds = Array.isArray(existing.vintedIds) ? existing.vintedIds : [];
-
-      if (Array.isArray(data.vintedIds) && data.vintedIds.length > 0) {
-        const remainingItems = await idbGetAll();
-        const remainingIdSet = new Set(remainingItems.map((i) => i.id));
+      if (Array.isArray(data.vintedIds)) {
         data.vintedIds = data.vintedIds.filter((id) => remainingIdSet.has(id));
-      } else if (currentIds.length > 0) {
-        const remainingItems = await idbGetAll();
-        const remainingIdSet = new Set(remainingItems.map((i) => i.id));
-        data.vintedIds = currentIds.filter((id) => remainingIdSet.has(id));
       }
 
       await chrome.storage.local.set(data);
-      await getBytesInUse();
-
       return {
         success: true,
         data,
@@ -190,92 +180,59 @@ async function safeStorageSet(data) {
 }
 
 // ---------------------------------------------------------------------------
-// Migration automatique storage.local -> IndexedDB
+// Migration : ne bloque plus jamais le popup.
+// Si aucune ancienne clé legacy présente (ou déjà migrée), on répond tout de
+// suite avec migratedCount: 0 au lieu de boucler / attendre indéfiniment.
 // ---------------------------------------------------------------------------
 
-function roughByteSize(value) {
-  try {
-    return new Blob([JSON.stringify(value)]).size;
-  } catch (e) {
-    return JSON.stringify(value || "").length;
-  }
-}
-
-function normalizeToItem(rawEntry, fallbackIndex) {
-  if (!rawEntry || typeof rawEntry !== "object") {
-    return {
-      id: `migrated_${fallbackIndex}_${Date.now()}`,
-      url: "",
-      title: String(rawEntry || ""),
-      price: "",
-      ts: Date.now(),
-    };
-  }
-
-  const id =
-    rawEntry.id ||
-    rawEntry.itemId ||
-    rawEntry.vintedId ||
-    (rawEntry.url && rawEntry.url.match(/\/items\/(\d+)/) ? rawEntry.url.match(/\/items\/(\d+)/)[1] : null) ||
-    `migrated_${fallbackIndex}_${Date.now()}`;
-
-  return {
-    id: String(id),
-    url: rawEntry.url || rawEntry.link || "",
-    title: rawEntry.title || rawEntry.name || "",
-    price: rawEntry.price || rawEntry.prix || "",
-    ts: rawEntry.ts || rawEntry.timestamp || Date.now(),
-  };
-}
-
 async function migrateNow() {
-  const all = await chrome.storage.local.get(null);
-  const keysFound = OLD_KEYS_TO_MIGRATE.filter((k) => Array.isArray(all[k]));
+  let all;
+  try {
+    all = await chrome.storage.local.get(null);
+  } catch (e) {
+    // storage.local illisible -> on débloque quand même le popup
+    await chrome.storage.local.set({ migrated: true }).catch(() => {});
+    return { migratedCount: 0, keysMigrated: [] };
+  }
+
+  const keysFound = OLD_KEYS_TO_MIGRATE.filter((k) => Array.isArray(all[k]) && all[k].length > 0);
+
+  if (keysFound.length === 0) {
+    // Rien à migrer -> débloque immédiatement, plus de "Migration en cours..." infini
+    await chrome.storage.local.set({ migrated: true });
+    return { migratedCount: 0, keysMigrated: [] };
+  }
 
   let migratedCount = 0;
   const keysActuallyMigrated = [];
 
   for (const key of keysFound) {
     const arr = all[key];
-    const size = roughByteSize(arr);
-
-    if (size <= MIGRATION_ARRAY_SIZE_THRESHOLD && arr.length === 0) {
-      continue;
-    }
-
     for (let i = 0; i < arr.length; i++) {
-      const item = normalizeToItem(arr[i], i);
       try {
-        await idbPut(item);
+        await idbPut(arr[i] || {});
         migratedCount++;
       } catch (e) {
         console.error(`[vinted2leboncoin] Échec migration item ${i} de la clé ${key}`, e);
       }
     }
-
     await chrome.storage.local.remove(key);
     keysActuallyMigrated.push(key);
   }
 
   const allItemsNow = await idbGetAll();
-  const vintedIds = allItemsNow.map((i) => i.id);
-
   await safeStorageSet({
-    vintedIds,
+    vintedIds: allItemsNow.map((i) => i.id),
     lastSync: Date.now(),
     migrated: true,
   });
-
-  console.log(
-    `[vinted2leboncoin] Migration terminée: ${migratedCount} items migrés depuis [${keysActuallyMigrated.join(", ")}]`
-  );
 
   return { migratedCount, keysMigrated: keysActuallyMigrated };
 }
 
 async function migrateIfNeeded() {
   const { migrated } = await chrome.storage.local.get(["migrated"]);
-  if (migrated) return { migratedCount: 0, keysMigrated: [], alreadyDone: true };
+  if (migrated) return { migratedCount: 0, keysMigrated: [] };
   return migrateNow();
 }
 
@@ -288,7 +245,8 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Message router
+// Message router - return true OBLIGATOIRE pour garder le service worker
+// vivant le temps de la réponse async (fix du popup bloqué sur "-").
 // ---------------------------------------------------------------------------
 
 async function handleMessage(message) {
@@ -322,8 +280,7 @@ async function handleMessage(message) {
       return { success: true, data: { bytes, mb: bytes / (1024 * 1024), count } };
     }
     case "SAFE_SET": {
-      const result = await safeStorageSet(payload || {});
-      return result;
+      return safeStorageSet(payload || {});
     }
     case "MIGRATE_NOW": {
       const data = await migrateNow();
@@ -338,5 +295,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message)
     .then((result) => sendResponse(result))
     .catch((err) => sendResponse({ success: false, error: err.message || String(err) }));
-  return true; // réponse asynchrone
+  return true; // CRITIQUE : garde le canal ouvert pour la réponse async
 });

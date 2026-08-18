@@ -37,15 +37,15 @@
     font-size: 13px;
     cursor: pointer;
   }
-  #btn-clear {
+  #clearBtn {
     background: #ffe1e1;
     color: #a00;
   }
-  #btn-migrate {
+  #migrateBtn {
     background: #e1eaff;
     color: #1a3a8f;
   }
-  #btn-export {
+  #exportBtn {
     background: #e1ffe6;
     color: #1a7a2f;
   }
@@ -60,16 +60,16 @@
 <body>
   <h1>Vinted -> Leboncoin</h1>
 
-  <div class="stat"><span>Items stockés</span><span id="count">-</span></div>
-  <div class="stat"><span>Usage storage.local</span><span id="usage">-</span></div>
+  <div class="stat"><span>Items stockés</span><span id="count">0</span></div>
+  <div class="stat"><span>Usage storage.local</span><span id="usage">0 Mo</span></div>
 
   <div class="actions">
-    <button id="btn-migrate">Migrer maintenant</button>
-    <button id="btn-export">Exporter en JSON</button>
-    <button id="btn-clear">Vider IndexedDB</button>
+    <button id="migrateBtn">Migrer maintenant</button>
+    <button id="exportBtn">Exporter en JSON</button>
+    <button id="clearBtn">Vider IndexedDB</button>
   </div>
 
-  <div id="status"></div>
+  <div id="status">Prêt</div>
 
   <script src="popup.js"></script>
 </body>
