@@ -159,6 +159,19 @@ function parseJsonLdProduct() {
   return null;
 }
 
+function getImgUrl(img) {
+  const candidate =
+    img.currentSrc ||
+    img.getAttribute("data-src") ||
+    img.getAttribute("data-original") ||
+    img.src ||
+    (img.getAttribute("data-srcset") && img.getAttribute("data-srcset").split(",")[0].trim().split(" ")[0]) ||
+    (img.srcset && img.srcset.split(",")[0].trim().split(" ")[0]);
+
+  if (!candidate || candidate.startsWith("data:")) return null; // placeholder lazy-load, pas une vraie image
+  return candidate;
+}
+
 function extractSingleItemData() {
   const ld = parseJsonLdProduct();
 
@@ -166,7 +179,6 @@ function extractSingleItemData() {
   let description = ld && ld.description;
   let price =
     ld && ld.offers && (ld.offers.price || (Array.isArray(ld.offers) && ld.offers[0] && ld.offers[0].price));
-  let images = ld && ld.image ? (Array.isArray(ld.image) ? ld.image : [ld.image]) : [];
 
   if (!title) {
     const titleEl = document.querySelector('h1, [data-testid="item-page-summary-plugin"] h1, [itemprop="name"]');
@@ -185,12 +197,30 @@ function extractSingleItemData() {
     price = (priceEl && (priceEl.getAttribute("content") || priceEl.textContent) || "").trim();
   }
 
-  if (!images || images.length === 0) {
-    images = Array.from(document.querySelectorAll('[data-testid*="gallery"] img, [class*="gallery"] img, img[srcset]'))
-      .map((img) => img.currentSrc || img.src)
-      .filter(Boolean);
-    images = Array.from(new Set(images)).slice(0, 20);
-  }
+  // Sélecteur exact confirmé sur le DOM Vinted (data-testid="item-photo-N--img"),
+  // en priorité absolue avant le fallback générique.
+  const exactImages = Array.from(document.querySelectorAll('img[data-testid^="item-photo-"]'))
+    .map(getImgUrl)
+    .filter(Boolean);
+
+  // Le JSON-LD ne contient souvent qu'une seule image "principale" -> on
+  // fusionne toujours avec les vignettes du DOM (galerie/carrousel), en
+  // gérant le lazy-loading (data-src) qui piège un scrape src-only.
+  const domImages = Array.from(
+    document.querySelectorAll(
+      '[data-testid*="gallery"] img, [data-testid*="photo"] img, [class*="gallery"] img, ' +
+        '[class*="carousel"] img, [class*="thumbnail"] img, [role="listitem"] img, ' +
+        'button img, li img, img[srcset], img[data-src]'
+    )
+  )
+    .map(getImgUrl)
+    .filter(Boolean);
+
+  const ldImages = ld && ld.image ? (Array.isArray(ld.image) ? ld.image : [ld.image]) : [];
+
+  const images = Array.from(new Set([...exactImages, ...domImages, ...ldImages])).slice(0, 20);
+
+  console.log(`[vinted2leboncoin] Extraction images: ${exactImages.length} exact, ${domImages.length} générique, ${images.length} au total après dédup`);
 
   return {
     sourceUrl: location.href,
@@ -235,7 +265,7 @@ function injectLeboncoinTransferButton() {
       if (!res.success) throw new Error(res.error || "Échec préparation");
 
       btn.textContent = "Ouverture Leboncoin...";
-      window.open("https://www.leboncoin.fr/deposer-une-annonce/", "_blank");
+      window.open("https://www.leboncoin.fr/deposer-une-annonce", "_blank");
 
       setTimeout(() => {
         btn.textContent = "Envoyer vers Leboncoin";
