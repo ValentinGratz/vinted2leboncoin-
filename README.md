@@ -9,6 +9,13 @@
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Chrome](https://img.shields.io/badge/Chrome-Manifest_V3-4285F4)
 
+### 🆕 v1.7.6 - FIX QUOTA EXCEEDED
+
+- Ajout de la feature de marquage de l'article comme importé
+
+<img width="282" height="427" alt="image" src="https://github.com/user-attachments/assets/0e81b473-0808-4e7f-b55f-fb27bbcb1973" />
+
+
 ### 🆕 v1.7.1 - FIX QUOTA EXCEEDED
 
 **Correction majeure du bug `kQuotaBytesPerItem quota exceeded` :**
