@@ -89,4 +89,96 @@ document.getElementById("exportBtn").addEventListener("click", async () => {
   setStatus(`Export lancé: ${res.data.length} items.`, false, true);
 });
 
+// ---------------------------------------------------------------------------
+// Marquage manuel "importé" pour les articles envoyés avant l'ajout de cette
+// fonctionnalité (pas de moyen de le déduire automatiquement, donc l'humain
+// décide).
+// ---------------------------------------------------------------------------
+
+let manualItemsCache = null; // chargé une seule fois à la première ouverture
+
+function renderManualList(filterText) {
+  const container = document.getElementById("manualList");
+  const filter = (filterText || "").trim().toLowerCase();
+
+  const filtered = filter
+    ? manualItemsCache.filter((entry) => entry.item.title.toLowerCase().includes(filter))
+    : manualItemsCache;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="manual-empty">Aucun article</div>';
+    return;
+  }
+
+  container.innerHTML = "";
+  filtered.slice(0, 200).forEach(({ item, imported }) => {
+    const row = document.createElement("div");
+    row.className = "manual-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = imported;
+    checkbox.id = `manual-${item.id}`;
+
+    const label = document.createElement("label");
+    label.htmlFor = checkbox.id;
+    label.textContent = item.title || item.id;
+    label.title = item.title || item.id;
+
+    checkbox.addEventListener("change", async () => {
+      checkbox.disabled = true;
+      const type = checkbox.checked ? "LBC_MARK_IMPORTED" : "LBC_UNMARK_IMPORTED";
+      const res = await sendToBackground(type, { id: item.id });
+      checkbox.disabled = false;
+      if (!res.success) {
+        checkbox.checked = !checkbox.checked; // rollback visuel si échec
+        setStatus(`Erreur: ${res.error}`, true, true);
+        return;
+      }
+      const cached = manualItemsCache.find((e) => e.item.id === item.id);
+      if (cached) cached.imported = checkbox.checked;
+    });
+
+    row.appendChild(checkbox);
+    row.appendChild(label);
+    container.appendChild(row);
+  });
+}
+
+async function loadManualList() {
+  const container = document.getElementById("manualList");
+  container.innerHTML = '<div class="manual-empty">Chargement...</div>';
+
+  const [itemsRes, importedRes] = await Promise.all([
+    sendToBackground("IDB_GET_ALL"),
+    sendToBackground("LBC_GET_ALL_IMPORTED"),
+  ]);
+
+  if (!itemsRes.success) {
+    container.innerHTML = '<div class="manual-empty">Erreur de chargement</div>';
+    return;
+  }
+
+  const importedSet = new Set(importedRes.success ? importedRes.data : []);
+  manualItemsCache = itemsRes.data
+    .filter((item) => item.title)
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .map((item) => ({ item, imported: importedSet.has(item.id) }));
+
+  renderManualList("");
+}
+
+const manualDetails = document.querySelector(".manual-section");
+manualDetails.addEventListener(
+  "toggle",
+  () => {
+    if (manualDetails.open && !manualItemsCache) loadManualList();
+  },
+  { once: false }
+);
+
+document.getElementById("manualSearch").addEventListener("input", (e) => {
+  if (manualItemsCache) renderManualList(e.target.value);
+});
+
 document.addEventListener("DOMContentLoaded", refresh);

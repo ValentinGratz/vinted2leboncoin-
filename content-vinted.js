@@ -61,18 +61,58 @@ function scrapeArticles() {
     'article[data-testid], a[href*="/items/"], div[data-testid*="item-box"]'
   );
 
-  const items = [];
+  const pairs = [];
   const seen = new Set();
 
   nodes.forEach((node) => {
     const item = extractItemFromArticle(node);
     if (item && !seen.has(item.id)) {
       seen.add(item.id);
-      items.push(item);
+      pairs.push({ item, node });
     }
   });
 
-  return items;
+  return pairs;
+}
+
+async function getImportedIdsSet() {
+  const res = await sendToBackground("LBC_GET_ALL_IMPORTED");
+  return new Set(res.success ? res.data : []);
+}
+
+function addImportedBadge(node, id) {
+  if (!node || node.querySelector(`.vc-lbc-badge[data-id="${id}"]`)) return;
+
+  // Le badge est positionné en absolu : on s'assure que le conteneur a un
+  // contexte de positionnement, sinon le badge se placerait n'importe où.
+  if (getComputedStyle(node).position === "static") {
+    node.style.position = "relative";
+  }
+
+  const badge = document.createElement("div");
+  badge.className = "vc-lbc-badge";
+  badge.dataset.id = id;
+  badge.textContent = "✓ LBC";
+  badge.title = "Déjà envoyé vers Leboncoin";
+  badge.style.cssText = `
+    position:absolute;top:4px;right:4px;z-index:50;
+    background:#2e7d32;color:#fff;font-size:10px;font-weight:700;
+    padding:2px 6px;border-radius:4px;pointer-events:none;
+    font-family:sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.3);
+  `;
+  node.appendChild(badge);
+}
+
+async function applyImportedBadges(pairs) {
+  if (pairs.length === 0) return;
+  try {
+    const importedIds = await getImportedIdsSet();
+    pairs.forEach(({ item, node }) => {
+      if (importedIds.has(item.id)) addImportedBadge(node, item.id);
+    });
+  } catch (err) {
+    console.error("[vinted2leboncoin] Échec application des badges Leboncoin", err);
+  }
 }
 
 async function updateVintedIdsIndex(newIds) {
@@ -104,9 +144,10 @@ async function updateVintedIdsIndex(newIds) {
 }
 
 async function syncScrapedItems() {
-  const items = scrapeArticles();
-  if (items.length === 0) return;
+  const pairs = scrapeArticles();
+  if (pairs.length === 0) return;
 
+  const items = pairs.map((p) => p.item);
   const results = await Promise.allSettled(items.map((item) => sendToBackground("IDB_PUT", item)));
 
   const successfulIds = items
@@ -125,6 +166,7 @@ async function syncScrapedItems() {
   }
 
   await updateVintedIdsIndex(successfulIds);
+  await applyImportedBadges(pairs);
 
   // Log uniquement une fois les résultats connus, jamais avant.
   console.log(`[vinted2leboncoin] Sync: ${successfulIds.length}/${items.length} items sauvegardés en IndexedDB`);
@@ -224,12 +266,43 @@ function extractSingleItemData() {
 
   return {
     sourceUrl: location.href,
+    id: extractId(location.href),
     title: String(title || "").trim().slice(0, 200),
     description: String(description || "").trim().slice(0, 4000),
     price: String(price || "").replace(/[^\d,.\s€]/g, "").trim(),
     images,
     ts: Date.now(),
   };
+}
+
+function setButtonImportedState(btn, imported) {
+  const existingLink = document.getElementById("vc-lbc-reimport-link");
+  if (existingLink) existingLink.remove();
+
+  if (imported) {
+    btn.textContent = "✓ Importé sur Leboncoin";
+    btn.disabled = true;
+    btn.style.background = "#2e7d32";
+    btn.style.cursor = "default";
+
+    const link = document.createElement("a");
+    link.id = "vc-lbc-reimport-link";
+    link.href = "#";
+    link.textContent = "réimporter";
+    link.style.cssText = "margin-left:10px;font-size:12px;color:#666;text-decoration:underline;cursor:pointer;";
+    link.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const id = extractId(location.href);
+      await sendToBackground("LBC_UNMARK_IMPORTED", { id });
+      setButtonImportedState(btn, false);
+    });
+    btn.insertAdjacentElement("afterend", link);
+  } else {
+    btn.textContent = "Envoyer vers Leboncoin";
+    btn.disabled = false;
+    btn.style.background = "#ff6e14";
+    btn.style.cursor = "pointer";
+  }
 }
 
 function injectLeboncoinTransferButton() {
@@ -251,6 +324,16 @@ function injectLeboncoinTransferButton() {
   );
 
   const btn = document.getElementById("vc-lbc-transfer-btn");
+  const itemId = extractId(location.href);
+
+  // Vérifie l'état persisté au chargement (fix issue #3 : ne redevient plus
+  // "Envoyer vers Leboncoin" après un rechargement/retour sur la page).
+  sendToBackground("LBC_CHECK_IMPORTED", { id: itemId })
+    .then((res) => {
+      if (res.success && res.data) setButtonImportedState(btn, true);
+    })
+    .catch(() => {});
+
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     btn.textContent = "Préparation...";
@@ -264,13 +347,12 @@ function injectLeboncoinTransferButton() {
       const res = await sendToBackground("LBC_PREPARE", payload);
       if (!res.success) throw new Error(res.error || "Échec préparation");
 
+      await sendToBackground("LBC_MARK_IMPORTED", { id: payload.id });
+
       btn.textContent = "Ouverture Leboncoin...";
       window.open("https://www.leboncoin.fr/deposer-une-annonce", "_blank");
 
-      setTimeout(() => {
-        btn.textContent = "Envoyer vers Leboncoin";
-        btn.disabled = false;
-      }, 2000);
+      setTimeout(() => setButtonImportedState(btn, true), 1200);
     } catch (err) {
       console.error("[vinted2leboncoin] Échec transfert vers Leboncoin", err);
       btn.textContent = "Erreur, réessayer";

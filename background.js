@@ -326,6 +326,39 @@ async function handleMessage(message) {
       await chrome.storage.local.set({ pendingTransfer: enrichedPayload });
       return { success: true, data: enrichedPayload };
     }
+    case "LBC_MARK_IMPORTED": {
+      if (!payload || !payload.id) {
+        return { success: false, error: "LBC_MARK_IMPORTED: id manquant" };
+      }
+      const { importedLbcIds } = await chrome.storage.local.get(["importedLbcIds"]);
+      const ids = Array.isArray(importedLbcIds) ? importedLbcIds : [];
+      if (!ids.includes(payload.id)) {
+        ids.push(payload.id);
+        await safeStorageSet({ importedLbcIds: ids });
+      }
+      return { success: true, data: true };
+    }
+    case "LBC_UNMARK_IMPORTED": {
+      if (!payload || !payload.id) {
+        return { success: false, error: "LBC_UNMARK_IMPORTED: id manquant" };
+      }
+      const { importedLbcIds } = await chrome.storage.local.get(["importedLbcIds"]);
+      const ids = (Array.isArray(importedLbcIds) ? importedLbcIds : []).filter((id) => id !== payload.id);
+      await chrome.storage.local.set({ importedLbcIds: ids });
+      return { success: true, data: true };
+    }
+    case "LBC_CHECK_IMPORTED": {
+      if (!payload || !payload.id) {
+        return { success: false, error: "LBC_CHECK_IMPORTED: id manquant" };
+      }
+      const { importedLbcIds } = await chrome.storage.local.get(["importedLbcIds"]);
+      const ids = Array.isArray(importedLbcIds) ? importedLbcIds : [];
+      return { success: true, data: ids.includes(payload.id) };
+    }
+    case "LBC_GET_ALL_IMPORTED": {
+      const { importedLbcIds } = await chrome.storage.local.get(["importedLbcIds"]);
+      return { success: true, data: Array.isArray(importedLbcIds) ? importedLbcIds : [] };
+    }
     case "LBC_GET_PENDING": {
       const { pendingTransfer } = await chrome.storage.local.get(["pendingTransfer"]);
       return { success: true, data: pendingTransfer || null };
