@@ -34,6 +34,25 @@ function extractId(url) {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString() + Math.random().toString(36).slice(2);
 }
 
+// Certaines pages Vinted (ex. gestion du dressing) n'affichent aucun texte de
+// titre dans la carte article -- seulement photo/vues/favoris/prix. L'URL
+// contient toujours un slug lisible ("9546070513-debardeur-bleu...") qu'on
+// peut reconvertir en titre correct plutôt que de laisser un champ vide ou
+// d'attraper un tooltip par erreur.
+function titleFromSlug(url) {
+  const match = url.match(/\/items\/\d+-([^/?]+)/);
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1])
+      .replace(/-/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+  } catch (e) {
+    return match[1].replace(/-/g, " ").trim();
+  }
+}
+
 function extractItemFromArticle(article) {
   const link =
     article.querySelector('a[href*="/items/"]') ||
@@ -45,10 +64,15 @@ function extractItemFromArticle(article) {
   const url = rawHref.startsWith("http") ? rawHref : new URL(rawHref, location.origin).href;
   const id = extractId(url); // jamais undefined -> plus de put rejeté par IndexedDB
 
-  const titleEl =
-    article.querySelector('[data-testid$="--description-title"]') ||
-    article.querySelector("h3, h2, [title]");
-  const title = ((titleEl && (titleEl.getAttribute("title") || titleEl.textContent)) || "").trim().slice(0, 200);
+  // IMPORTANT : ne jamais utiliser un sélecteur générique [title] ici -- ça
+  // attrape le tooltip du premier élément venu (icône, badge "il y a X
+  // minutes"...) au lieu du vrai titre du produit.
+  const titleEl = article.querySelector('[data-testid$="--description-title"]') || article.querySelector("h3, h2");
+  let title = ((titleEl && titleEl.textContent) || "").trim();
+  if (!title) {
+    title = titleFromSlug(url);
+  }
+  title = title.slice(0, 200);
 
   const priceEl = article.querySelector('[data-testid$="--price-text"]') || article.querySelector('[class*="price"]');
   const price = ((priceEl && priceEl.textContent) || "").trim().slice(0, 20);
