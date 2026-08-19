@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Vinted -> Leboncoin - FIX Quota",
-  "version": "1.7.5",
-  "description": "Fix quota exceeded - IndexedDB + unlimitedStorage",
+  "version": "1.7.6",
+  "description": "Vinted -> Leboncoin : transfert pré-rempli + suivi persistant des imports",
   "permissions": ["storage", "unlimitedStorage"],
   "host_permissions": [
     "*://*.vinted.fr/*",
@@ -17,7 +17,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.leboncoin.fr/deposer-une-annonce/*"],
+      "matches": ["*://*.leboncoin.fr/deposer-une-annonce*"],
       "js": ["content-leboncoin.js"],
       "run_at": "document_idle"
     }
