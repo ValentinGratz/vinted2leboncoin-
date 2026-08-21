@@ -9,6 +9,8 @@
 ![License](https://img.shields.io/badge/license-MIT-black)
 ![Chrome](https://img.shields.io/badge/Chrome-Manifest_V3-4285F4)
 
+> ⚠️ **Tu utilises CCleaner / BleachBit ?** Lis [ATTENTION_CCLEANER_BLEACHBIT.md](https://github.com/ValentinGratz/vinted2leboncoin-/blob/main/ATTENTION-CCLEANER-BLEACHBIT.md) sinon tu vas perdre tes données.
+
 ### 🆕 v1.7.6 - FIX QUOTA EXCEEDED
 
 - Ajout de la feature de marquage de l'article comme importé
