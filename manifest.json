@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Vinted -> Leboncoin - FIX Quota",
-  "version": "1.7.6",
+  "name": "Vinted -> Leboncoin",
+  "version": "1.8.0",
   "description": "Vinted -> Leboncoin : transfert pré-rempli + suivi persistant des imports",
   "permissions": ["storage", "unlimitedStorage"],
   "host_permissions": [
