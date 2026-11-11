@@ -263,30 +263,47 @@ function extractSingleItemData() {
     price = (priceEl && (priceEl.getAttribute("content") || priceEl.textContent) || "").trim();
   }
 
-  // Sélecteur exact confirmé sur le DOM Vinted (data-testid="item-photo-N--img"),
-  // en priorité absolue avant le fallback générique.
-  const exactImages = Array.from(document.querySelectorAll('img[data-testid^="item-photo-"]'))
-    .map(getImgUrl)
-    .filter(Boolean);
+  const photoKey = (u) => {
+    try {
+      return new URL(u, location.origin).pathname
+        .split("/")
+        .filter((s) => s && !/^(f\d+|\d+x\d+)$/i.test(s))
+        .join("/");
+    } catch (e) {
+      return u;
+    }
+  };
 
-  // Le JSON-LD ne contient souvent qu'une seule image "principale" -> on
-  // fusionne toujours avec les vignettes du DOM (galerie/carrousel), en
-  // gérant le lazy-loading (data-src) qui piège un scrape src-only.
-  const domImages = Array.from(
-    document.querySelectorAll(
-      '[data-testid*="gallery"] img, [data-testid*="photo"] img, [class*="gallery"] img, ' +
-        '[class*="carousel"] img, [class*="thumbnail"] img, [role="listitem"] img, ' +
-        'button img, li img, img[srcset], img[data-src]'
-    )
-  )
-    .map(getImgUrl)
-    .filter(Boolean);
+  const collect = (nodes) => {
+    const seen = new Set();
+    const out = [];
+    nodes.forEach((img) => {
+      const u = getImgUrl(img);
+      if (!u) return;
+      const k = photoKey(u);
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(u);
+    });
+    return out;
+  };
 
-  const ldImages = ld && ld.image ? (Array.isArray(ld.image) ? ld.image : [ld.image]) : [];
+  const exactNodes = Array.from(document.querySelectorAll('img[data-testid^="item-photo-"]')).filter(
+    (img) => !img.closest('[data-testid*="feed"], [data-testid*="closet"], [data-testid*="similar"], [data-testid*="product-item"]')
+  );
 
-  const images = Array.from(new Set([...exactImages, ...domImages, ...ldImages])).slice(0, 20);
+  let images = collect(exactNodes);
 
-  console.log(`[vinted2leboncoin] Extraction images: ${exactImages.length} exact, ${domImages.length} générique, ${images.length} au total après dédup`);
+  if (images.length === 0) {
+    const gallery = document.querySelector('[data-testid="item-photos"], [data-testid*="item-photos"], .item-photos');
+    if (gallery) images = collect(Array.from(gallery.querySelectorAll("img")));
+  }
+
+  if (images.length === 0 && ld && ld.image) {
+    images = (Array.isArray(ld.image) ? ld.image : [ld.image]).filter((u) => typeof u === "string");
+  }
+
+  images = images.slice(0, 20);
 
   return {
     sourceUrl: location.href,
